@@ -144,7 +144,7 @@ bool Engine::run_campaign(const std::string& target, const std::vector<int>& por
     for (const auto& host : hosts_to_scan) {
         ScanResult sres = run_scan(host, ports);
         print_scan_result(sres);
-        for (int p : sres.open_ports) {
+        for (int p : sres.open_port_numbers()) {
             if (p == 80 || p == 443) {
                 std::string proto = (p == 443) ? "https://" : "http://";
                 web_targets.push_back(proto + host + ":" + std::to_string(p));
