@@ -17,12 +17,12 @@ static void show_usage() {
         "  Utilizzo:\n"
         "    ./Gungnir                          Avvia shell interattiva\n"
         "    ./Gungnir <comando> <target> [..]  Esegui direttamente\n"
-        "\n"
         "  Comandi:\n"
-        "    scan   <target> [-p ports] [-o file]\n"
-        "    dns    <target> [-o file]\n"
-        "    whois  <target> [-o file]\n"
-        "    scrape <target>\n"
+        "    scan     <target> [-p ports] [-o file]\n"
+        "    dns      <target> [-o file]\n"
+        "    whois    <target> [-o file]\n"
+        "    scrape   <target>\n"
+        "    campaign <target> [-p ports]\n"
         "\n"
         "  Flag:\n"
         "    -p <ports>   Porte TCP separate da virgola (es. 22,80,443)\n"
@@ -36,6 +36,7 @@ static void show_usage() {
         "    ./Gungnir dns    example.com\n"
         "    ./Gungnir whois  example.com -o whois.json\n"
         "    ./Gungnir scrape user123\n"
+        "    ./Gungnir campaign example.com -p 80,443\n"
         "\n"
         "  Stile legacy (ancora supportato):\n"
         "    ./Gungnir -t example.com -m scan -p 22,80,443\n"
@@ -108,10 +109,11 @@ int main(int argc, char* argv[]) {
     // ── subcommand style:  ./Gungnir scan example.com [...] ───────────────────
     struct CmdInfo { bool ports_ok; };
     const std::map<std::string, CmdInfo> known_commands = {
-        {"scan",   {true }},
-        {"dns",    {false}},
-        {"whois",  {false}},
-        {"scrape", {false}},
+        {"scan",     {true }},
+        {"dns",      {false}},
+        {"whois",    {false}},
+        {"scrape",   {false}},
+        {"campaign", {true }},
     };
 
     auto cmd_it = known_commands.find(first);

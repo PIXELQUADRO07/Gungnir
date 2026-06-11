@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(CURL REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 include_directories(
     src
@@ -20,8 +22,10 @@ set(SOURCES
     src/engine.cpp
     src/shell.cpp
     src/updater.cpp
+    src/database.cpp
     modules/scraper.cpp
     modules/network/network.cpp
+    modules/network/http_client.cpp
     modules/recon/recon.cpp
     utils/logger.cpp
 )
@@ -32,6 +36,8 @@ target_link_libraries(Gungnir PRIVATE
     Threads::Threads
     OpenSSL::SSL
     OpenSSL::Crypto
+    CURL::libcurl
+    SQLite::SQLite3
 )
 
 # resolv

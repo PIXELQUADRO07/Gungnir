@@ -65,6 +65,19 @@ Shell::Shell() {
             return true;
         });
 
+    // campaign
+    register_command("campaign", /*ports_ok=*/true,
+        "campaign <target> [-p ports]         Full OSINT campaign (DNS -> Scan -> Web)",
+        [this](const std::vector<std::string>& args) -> bool {
+            const auto pa = parse_args(args, 1, /*ports_supported=*/true);
+            if (pa.target.empty()) {
+                Logger::warn("Usage: campaign <target> [-p ports]");
+                return true;
+            }
+            engine_.execute("campaign", pa.target, {}, pa.ports);
+            return true;
+        });
+
     // use — set active module; list derived from registered recon commands
     register_command("use", /*ports_ok=*/false,
         "use <module>                         Set active module",
@@ -153,7 +166,7 @@ void Shell::register_command(
         help_lines_.push_back("  " + help_line);
 
     // track recon modules (those with actual targets)
-    const std::set<std::string> recon = {"scan","dns","whois","scrape"};
+    const std::set<std::string> recon = {"scan","dns","whois","scrape","campaign"};
     if (recon.count(name))
         recon_modules_[name] = ports_ok;
 }

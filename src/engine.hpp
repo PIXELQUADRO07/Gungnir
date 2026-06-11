@@ -50,8 +50,14 @@ struct ScanResult {
     }
 };
 
+#include "database.hpp"
+
 class Engine {
 public:
+    Engine() {
+        db.init();
+    }
+
     bool execute(
         const std::string& mode,
         const std::string& target,
@@ -60,8 +66,10 @@ public:
     );
 
 private:
+    Database db;
     ScanResult run_scan(const std::string& target, const std::vector<int>& ports);
     bool run_scrape(const std::string& target);
+    bool run_campaign(const std::string& target, const std::vector<int>& ports);
     bool run_dns(const std::string& target, const std::string& output_file);
     bool run_whois(const std::string& target, const std::string& output_file);
     void print_scan_result(const ScanResult& result) const;

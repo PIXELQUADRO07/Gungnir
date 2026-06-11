@@ -27,6 +27,10 @@ bool Engine::execute(
         return run_scrape(target);
     }
 
+    if (mode == "campaign") {
+        return run_campaign(target, ports);
+    }
+
     if (mode == "dns") {
         return run_dns(target, output_file);
     }
@@ -58,6 +62,8 @@ ScanResult Engine::run_scan(
     ScanResult result;
     result.target = target;
     result.open_ports = start_native_scan(target, scan_ports, 1000);
+    
+    db.save_scan(target, result.open_ports);
 
     const auto end_time = std::chrono::steady_clock::now();
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
@@ -67,9 +73,56 @@ ScanResult Engine::run_scan(
 }
 
 bool Engine::run_scrape(const std::string& target) {
-    Logger::info("Executing OSINT scraping on " + target);
-    Logger::warn("The scrape module is currently a stub; only placeholder logs are available.");
-    start_web_scrape(target);
+    ScrapeResult res = start_web_scrape(target);
+    if (!res.success) return false;
+
+    Logger::success("Scrape results for " + target);
+    if (!res.title.empty()) std::cout << "  - Title: " << res.title << "\n";
+    if (!res.server_header.empty()) std::cout << "  - Server: " << res.server_header << "\n";
+    if (!res.emails.empty()) {
+        std::cout << "  - Emails found:\n";
+        for (const auto& email : res.emails) {
+            std::cout << "      " << email << "\n";
+        }
+    }
+    return true;
+}
+
+bool Engine::run_campaign(const std::string& target, const std::vector<int>& ports) {
+    Logger::info("Starting Campaign on " + target);
+    
+    // 1. DNS
+    Logger::info("[Stage 1] DNS Enumeration");
+    DnsResult dns_res = run_dns_lookup(target);
+    db.save_dns(target, dns_res);
+    print_dns_result(dns_res);
+
+    std::vector<std::string> hosts_to_scan = dns_res.subdomains;
+    if (std::find(hosts_to_scan.begin(), hosts_to_scan.end(), target) == hosts_to_scan.end()) {
+        hosts_to_scan.push_back(target);
+    }
+
+    // 2. Port Scan su target e sottodomini
+    Logger::info("[Stage 2] Port Scanning");
+    std::vector<std::string> web_targets;
+    for (const auto& host : hosts_to_scan) {
+        ScanResult sres = run_scan(host, ports);
+        print_scan_result(sres);
+        for (int p : sres.open_ports) {
+            if (p == 80 || p == 443) {
+                std::string protocol = (p == 443) ? "https://" : "http://";
+                web_targets.push_back(protocol + host + ":" + std::to_string(p));
+            }
+        }
+    }
+
+    // 3. Web Scraper
+    Logger::info("[Stage 3] Web Scraping");
+    for (const auto& web_t : web_targets) {
+        run_scrape(web_t);
+    }
+
+    Logger::success("Campaign completed for " + target);
     return true;
 }
 
@@ -109,6 +162,7 @@ bool Engine::run_dns(const std::string& target, const std::string& output_file) 
 
     const auto start_time = std::chrono::steady_clock::now();
     const DnsResult result = run_dns_lookup(target);
+    db.save_dns(target, result);
     const auto end_time = std::chrono::steady_clock::now();
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
     Logger::info("DNS lookup completed in " + std::to_string(elapsed_ms) + " ms");
