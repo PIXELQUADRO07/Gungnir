@@ -103,7 +103,7 @@ std::vector<int> start_native_scan(
     server_addr.sin_family = AF_INET;
 
     if (!resolve_target(target, server_addr)) {
-        Logger::error("Impossibile risolvere il target: " + target);
+        Logger::error("Unable to resolve target: " + target);
         return {};
     }
 

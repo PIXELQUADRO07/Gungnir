@@ -19,7 +19,7 @@ Shell::Shell() {
         [this](const std::vector<std::string>& args) -> bool {
             const auto pa = parse_args(args, 1, /*ports_supported=*/true);
             if (pa.target.empty()) {
-                Logger::warn("Uso: scan <target> [-p ports] [-o file]");
+                Logger::warn("Usage: scan <target> [-p ports] [-o file]");
                 return true;
             }
             engine_.execute("scan", pa.target, pa.output_file, pa.ports);
@@ -32,7 +32,7 @@ Shell::Shell() {
         [this](const std::vector<std::string>& args) -> bool {
             const auto pa = parse_args(args, 1, /*ports_supported=*/false);
             if (pa.target.empty()) {
-                Logger::warn("Uso: dns <target> [-o file]");
+                Logger::warn("Usage: dns <target> [-o file]");
                 return true;
             }
             engine_.execute("dns", pa.target, pa.output_file, {});
@@ -45,7 +45,7 @@ Shell::Shell() {
         [this](const std::vector<std::string>& args) -> bool {
             const auto pa = parse_args(args, 1, /*ports_supported=*/false);
             if (pa.target.empty()) {
-                Logger::warn("Uso: whois <target> [-o file]");
+                Logger::warn("Usage: whois <target> [-o file]");
                 return true;
             }
             engine_.execute("whois", pa.target, pa.output_file, {});
@@ -58,7 +58,7 @@ Shell::Shell() {
         [this](const std::vector<std::string>& args) -> bool {
             const auto pa = parse_args(args, 1, /*ports_supported=*/false);
             if (pa.target.empty()) {
-                Logger::warn("Uso: scrape <target>");
+                Logger::warn("Usage: scrape <target>");
                 return true;
             }
             engine_.execute("scrape", pa.target, {}, {});
@@ -67,37 +67,37 @@ Shell::Shell() {
 
     // use — set active module; list derived from registered recon commands
     register_command("use", /*ports_ok=*/false,
-        "use <modulo>                         Imposta modulo attivo",
+        "use <module>                         Set active module",
         [this](const std::vector<std::string>& args) -> bool {
             if (args.size() < 2) {
-                Logger::warn("Uso: use <modulo>  (" + recon_modules_list() + ")");
+                Logger::warn("Usage: use <module>  (" + recon_modules_list() + ")");
                 return true;
             }
             const std::string& mod = args[1];
             if (recon_modules_.find(mod) == recon_modules_.end()) {
-                Logger::warn("Modulo sconosciuto: " + mod +
-                             ".  Disponibili: " + recon_modules_list());
+                Logger::warn("Unknown module: " + mod +
+                             ".  Available: " + recon_modules_list());
                 return true;
             }
             current_context_ = mod;
-            Logger::info("Modulo attivo: " + mod +
-                         ". Digita 'run <target>' per eseguire.");
+            Logger::info("Active module: " + mod +
+                         ". Type 'run <target>' to execute.");
             return true;
         });
 
     // run — execute current context
     register_command("run", /*ports_ok=*/true,
-        "run <target> [flags]                 Esegui modulo attivo",
+        "run <target> [flags]                 Execute active module",
         [this](const std::vector<std::string>& args) -> bool {
             if (current_context_.empty()) {
-                Logger::warn("Nessun modulo attivo. Usa 'use <modulo>' prima di 'run'.");
+                Logger::warn("No active module. Use 'use <module>' before 'run'.");
                 return true;
             }
             const bool ports_ok = recon_modules_.count(current_context_) &&
                                   recon_modules_.at(current_context_);
             const auto pa = parse_args(args, 1, ports_ok);
             if (pa.target.empty()) {
-                Logger::warn("Uso: run <target>");
+                Logger::warn("Usage: run <target>");
                 return true;
             }
             engine_.execute(current_context_, pa.target, pa.output_file, pa.ports);
@@ -173,8 +173,8 @@ bool Shell::dispatch(const std::vector<std::string>& tokens) {
     if (tokens.empty()) return true;
     auto it = commands_.find(tokens.front());
     if (it == commands_.end()) {
-        Logger::warn("Comando non riconosciuto: '" + tokens.front() +
-                     "'. Digita 'help' per la lista.");
+        Logger::warn("Unknown command: '" + tokens.front() +
+                     "'. Type 'help' for the list.");
         return true;
     }
     return it->second(tokens);
@@ -183,7 +183,7 @@ bool Shell::dispatch(const std::vector<std::string>& tokens) {
 // ─── help ─────────────────────────────────────────────────────────────────────
 
 void Shell::show_help() const {
-    std::cout << "\n  Comandi disponibili:\n"
+    std::cout << "\n  Available commands:\n"
                  "  ────────────────────────────────────────────────────────\n";
     for (const auto& line : help_lines_)
         std::cout << line << "\n";
@@ -201,7 +201,7 @@ std::string Shell::prompt() const {
 // ─── run loop ─────────────────────────────────────────────────────────────────
 
 void Shell::run() {
-    Logger::info("Modalità interattiva. Digita 'help' per i comandi.");
+    Logger::info("Interactive mode. Type 'help' for commands.");
 
 #ifdef USE_READLINE
     using_history();

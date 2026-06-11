@@ -28,9 +28,9 @@ inline std::vector<int> parse_ports(const std::string& ports_arg) {
             if (port > 0 && port <= 65535)
                 results.push_back(port);
             else
-                Logger::warn("Porta fuori range ignorata: " + p);
+                Logger::warn("Port out of range ignored: " + p);
         } catch (...) {
-            Logger::warn("Porta non valida ignorata: " + p);
+            Logger::warn("Invalid port ignored: " + p);
         }
     }
     return results;
@@ -101,23 +101,23 @@ inline ParsedArgs parse_args(
         const std::string& t = tokens[i];
         if (t == "-p") {
             if (!ports_supported) {
-                Logger::warn("Flag -p ignorata: questo comando non supporta porte.");
+                Logger::warn("Flag -p ignored: this command does not support ports.");
                 if (i + 1 < tokens.size()) ++i;  // consume value anyway
                 continue;
             }
             if (i + 1 >= tokens.size()) {
-                Logger::warn("Flag -p richiede un valore (es. -p 80,443).");
+                Logger::warn("Flag -p requires a value (e.g. -p 80,443).");
                 continue;
             }
             result.ports = parse_ports(tokens[++i]);
         } else if (t == "-o") {
             if (i + 1 >= tokens.size()) {
-                Logger::warn("Flag -o richiede un valore (es. -o output.json).");
+                Logger::warn("Flag -o requires a value (e.g. -o output.json).");
                 continue;
             }
             result.output_file = tokens[++i];
         } else if (t[0] == '-') {
-            Logger::warn("Flag sconosciuta ignorata: " + t + ". Digita 'help' per la lista.");
+            Logger::warn("Unknown flag ignored: " + t + ". Type 'help' for the list.");
         } else if (result.target.empty()) {
             result.target = t;
         } else {

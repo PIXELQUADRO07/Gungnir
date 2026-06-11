@@ -35,7 +35,7 @@ bool Engine::execute(
         return run_whois(target, output_file);
     }
 
-    Logger::error("Modalità specificata non valida: " + mode);
+    Logger::error("Invalid mode specified: " + mode);
     return false;
 }
 
@@ -43,7 +43,7 @@ ScanResult Engine::run_scan(
     const std::string& target,
     const std::vector<int>& ports
 ) {
-    Logger::info("Inizio scansione TCP su " + target);
+    Logger::info("Starting TCP scan on " + target);
     const std::vector<int> scan_ports = ports.empty() ? default_scan_ports() : ports;
 
     std::ostringstream port_list;
@@ -61,25 +61,25 @@ ScanResult Engine::run_scan(
 
     const auto end_time = std::chrono::steady_clock::now();
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-    Logger::info("Scansione completata in " + std::to_string(elapsed_ms) + " ms");
+    Logger::info("Scan completed in " + std::to_string(elapsed_ms) + " ms");
 
     return result;
 }
 
 bool Engine::run_scrape(const std::string& target) {
-    Logger::info("Esecuzione OSINT scraping su " + target);
-    Logger::warn("Il modulo scrape è attualmente uno stub; sono disponibili solo log placeholder.");
+    Logger::info("Executing OSINT scraping on " + target);
+    Logger::warn("The scrape module is currently a stub; only placeholder logs are available.");
     start_web_scrape(target);
     return true;
 }
 
 void Engine::print_scan_result(const ScanResult& result) const {
     if (result.open_ports.empty()) {
-        Logger::info("Nessuna porta aperta rilevata su " + result.target);
+        Logger::info("No open ports detected on " + result.target);
         return;
     }
 
-    Logger::success("Porte aperte su " + result.target + ":");
+    Logger::success("Open ports on " + result.target + ":");
     for (int port : result.open_ports) {
         std::cout << "  - " << port << "\n";
     }
@@ -91,12 +91,12 @@ bool Engine::dump_scan_result(
 ) const {
     std::ofstream out(output_file);
     if (!out) {
-        Logger::error("Impossibile aprire il file di output: " + output_file);
+        Logger::error("Unable to open output file: " + output_file);
         return false;
     }
 
     out << result.to_json_string() << std::endl;
-    Logger::success("Risultato salvato su " + output_file);
+    Logger::success("Result saved to " + output_file);
     return true;
 }
 
@@ -105,13 +105,13 @@ std::vector<int> Engine::default_scan_ports() const {
 }
 
 bool Engine::run_dns(const std::string& target, const std::string& output_file) {
-    Logger::info("Esecuzione lookup DNS su " + target);
+    Logger::info("Executing DNS lookup on " + target);
 
     const auto start_time = std::chrono::steady_clock::now();
     const DnsResult result = run_dns_lookup(target);
     const auto end_time = std::chrono::steady_clock::now();
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-    Logger::info("Lookup DNS completato in " + std::to_string(elapsed_ms) + " ms");
+    Logger::info("DNS lookup completed in " + std::to_string(elapsed_ms) + " ms");
 
     print_dns_result(result);
 
@@ -123,13 +123,13 @@ bool Engine::run_dns(const std::string& target, const std::string& output_file) 
 }
 
 bool Engine::run_whois(const std::string& target, const std::string& output_file) {
-    Logger::info("Esecuzione query WHOIS su " + target);
+    Logger::info("Executing WHOIS query on " + target);
 
     const auto start_time = std::chrono::steady_clock::now();
     const WhoisResult result = run_whois_lookup(target);
     const auto end_time = std::chrono::steady_clock::now();
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-    Logger::info("Query WHOIS completata in " + std::to_string(elapsed_ms) + " ms");
+    Logger::info("WHOIS query completed in " + std::to_string(elapsed_ms) + " ms");
 
     print_whois_result(result);
 
@@ -142,11 +142,11 @@ bool Engine::run_whois(const std::string& target, const std::string& output_file
 
 void Engine::print_dns_result(const DnsResult& result) const {
     if (!result.success) {
-        Logger::info("Nessun record DNS trovato per " + result.target);
+        Logger::info("No DNS records found for " + result.target);
         return;
     }
 
-    Logger::success("Record DNS per " + result.target + ":");
+    Logger::success("DNS records for " + result.target + ":");
     for (const auto& record : result.records) {
         if (record.type == "MX") {
             std::cout << "  - MX (priorita " << record.priority << "): " << record.value << "\n";
@@ -158,11 +158,11 @@ void Engine::print_dns_result(const DnsResult& result) const {
 
 void Engine::print_whois_result(const WhoisResult& result) const {
     if (!result.success) {
-        Logger::info("Nessun dato WHOIS trovato per " + result.target);
+        Logger::info("No WHOIS data found for " + result.target);
         return;
     }
 
-    Logger::success("Dati WHOIS per " + result.target + " (server: " + result.whois_server + "):");
+    Logger::success("WHOIS data for " + result.target + " (server: " + result.whois_server + "):");
 
     std::istringstream stream(result.raw_data);
     std::string line;
@@ -181,14 +181,14 @@ void Engine::print_whois_result(const WhoisResult& result) const {
     }
 
     if (printed == max_lines) {
-        Logger::info("Output troncato. Usa -o per salvare la risposta WHOIS completa.");
+        Logger::info("Output truncated. Use -o to save the full WHOIS response.");
     }
 }
 
 bool Engine::dump_dns_result(const DnsResult& result, const std::string& output_file) const {
     std::ofstream out(output_file);
     if (!out) {
-        Logger::error("Impossibile aprire il file di output: " + output_file);
+        Logger::error("Unable to open output file: " + output_file);
         return false;
     }
 
@@ -216,14 +216,14 @@ bool Engine::dump_dns_result(const DnsResult& result, const std::string& output_
     json << "\n  ]\n}";
 
     out << json.str() << std::endl;
-    Logger::success("Risultato DNS salvato su " + output_file);
+    Logger::success("DNS result saved to " + output_file);
     return true;
 }
 
 bool Engine::dump_whois_result(const WhoisResult& result, const std::string& output_file) const {
     std::ofstream out(output_file);
     if (!out) {
-        Logger::error("Impossibile aprire il file di output: " + output_file);
+        Logger::error("Unable to open output file: " + output_file);
         return false;
     }
 
@@ -254,6 +254,6 @@ bool Engine::dump_whois_result(const WhoisResult& result, const std::string& out
     json << "  ]\n}";
 
     out << json.str() << "\n";
-    Logger::success("Risultato WHOIS salvato su " + output_file);
+    Logger::success("WHOIS result saved to " + output_file);
     return true;
 }

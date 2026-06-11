@@ -246,7 +246,7 @@ DnsResult run_dns_lookup(const std::string& target) {
     result.target = target;
 
     if (res_init() != 0) {
-        Logger::error("Impossibile inizializzare il resolver DNS");
+        Logger::error("Unable to initialize DNS resolver");
         return result;
     }
 
@@ -265,7 +265,7 @@ DnsResult run_dns_lookup(const std::string& target) {
 
     result.success = !result.records.empty();
     if (!result.success) {
-        Logger::warn("Nessun record DNS trovato per " + target);
+        Logger::warn("No DNS records found for " + target);
     }
 
     return result;
@@ -284,7 +284,7 @@ WhoisResult run_whois_lookup(const std::string& target) {
     std::string response = query_whois_server(current_server, tld);
 
     if (response.empty()) {
-        Logger::error("Impossibile contattare il server WHOIS IANA");
+        Logger::error("Unable to contact the IANA WHOIS server");
         return result;
     }
 
@@ -314,7 +314,7 @@ WhoisResult run_whois_lookup(const std::string& target) {
     result.success = !response.empty();
 
     if (!result.success) {
-        Logger::warn("Nessun dato WHOIS trovato per " + target);
+        Logger::warn("No WHOIS data found for " + target);
     }
 
     return result;

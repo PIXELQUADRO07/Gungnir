@@ -13,30 +13,30 @@ static void show_usage() {
         "\n"
         "  " << GUNGNIR_VERSION << "\n"
         "\n"
-        "  Utilizzo:\n"
-        "    ./Gungnir                          Avvia shell interattiva\n"
-        "    ./Gungnir <comando> <target> [..]  Esegui direttamente\n"
+        "  Usage:\n"
+        "    ./Gungnir                          Start interactive shell\n"
+        "    ./Gungnir <command> <target> [..]  Run directly\n"
         "\n"
-        "  Comandi:\n"
+        "  Commands:\n"
         "    scan   <target> [-p ports] [-o file]\n"
         "    dns    <target> [-o file]\n"
         "    whois  <target> [-o file]\n"
         "    scrape <target>\n"
         "\n"
-        "  Flag:\n"
-        "    -p <ports>   Porte TCP separate da virgola (es. 22,80,443)\n"
-        "    -o <file>    Esporta risultato in JSON\n"
+        "  Flags:\n"
+        "    -p <ports>   TCP ports separated by comma (e.g. 22,80,443)\n"
+        "    -o <file>    Export result to JSON\n"
         "    -v, --version\n"
         "    -h, --help\n"
         "\n"
-        "  Esempi:\n"
+        "  Examples:\n"
         "    ./Gungnir scan   example.com\n"
         "    ./Gungnir scan   example.com -p 22,80,443 -o result.json\n"
         "    ./Gungnir dns    example.com\n"
         "    ./Gungnir whois  example.com -o whois.json\n"
         "    ./Gungnir scrape user123\n"
         "\n"
-        "  Stile legacy (ancora supportato):\n"
+        "  Legacy style (still supported):\n"
         "    ./Gungnir -t example.com -m scan -p 22,80,443\n"
         "\n";
 }
@@ -69,8 +69,8 @@ static LegacyArgs parse_legacy(int argc, char* argv[]) {
         else if (a == "-o" && i+1<argc) { la.output_file = argv[++i]; }
         else if (a == "-p" && i+1<argc) { la.ports       = parse_ports(argv[++i]); }
         else {
-            Logger::warn("Flag non riconosciuta: " + a +
-                         ". Usa -h per la lista dei comandi.");
+            Logger::warn("Unknown flag ignored: " + a +
+                         ". Use -h for the command list.");
         }
     }
     la.valid = !la.mode.empty() && !la.target.empty();
@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
     if (cmd_it != known_commands.end()) {
         const ParsedArgs pa = parse_subcommand(argc, argv, cmd_it->second.ports_ok);
         if (pa.target.empty()) {
-            Logger::error("Target mancante.  Uso: ./Gungnir " + first + " <target>");
+            Logger::error("Missing target.  Usage: ./Gungnir " + first + " <target>");
             return 1;
         }
         Engine engine;
@@ -135,7 +135,7 @@ int main(int argc, char* argv[]) {
     }
 
     // ── nothing matched ───────────────────────────────────────────────────────
-    Logger::error("Comando non riconosciuto: '" + first + "'.");
+    Logger::error("Unknown command: '" + first + "'.");
     show_usage();
     return 1;
 }
