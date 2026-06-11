@@ -39,104 +39,68 @@ namespace {
         return true;
     }
 
-    bool connect_with_timeout(int sock, const sockaddr_in& server_addr, int timeout_ms) {
-        const int flags = fcntl(sock, F_GETFL, 0);
-        if (flags < 0) {
-            return false;
-        }
-
-        if (fcntl(sock, F_SETFL, flags | O_NONBLOCK) < 0) {
-            return false;
-        }
-
-        int result = connect(sock, reinterpret_cast<const sockaddr*>(&server_addr), sizeof(server_addr));
-        if (result == 0) {
-            fcntl(sock, F_SETFL, flags);
-            return true;
-        }
-
-        if (errno != EINPROGRESS) {
-            return false;
-        }
-
-        pollfd pfd;
-        pfd.fd = sock;
-        pfd.events = POLLOUT;
-        pfd.revents = 0;
-
-        result = poll(&pfd, 1, timeout_ms);
-        if (result <= 0) {
-            return false;
-        }
-
-        int socket_error = 0;
-        socklen_t error_length = sizeof(socket_error);
-        if (getsockopt(sock, SOL_SOCKET, SO_ERROR, &socket_error, &error_length) < 0) {
-            return false;
-        }
-
-        fcntl(sock, F_SETFL, flags);
-        return socket_error == 0;
-    }
-
-    bool check_port(const sockaddr_in& base_addr, int port, int timeout_ms) {
-        int sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) {
-            return false;
-        }
-
-        sockaddr_in server_addr = base_addr;
-        server_addr.sin_port = htons(port);
-
-        const bool open = connect_with_timeout(sock, server_addr, timeout_ms);
-        close(sock);
-        return open;
-    }
-}
+} // namespace
 
 std::vector<int> start_native_scan(
     const std::string& target,
     const std::vector<int>& ports,
     int timeout_ms
 ) {
-    sockaddr_in server_addr{};
-    server_addr.sin_family = AF_INET;
+        sockaddr_in server_addr{};
+        server_addr.sin_family = AF_INET;
 
-    if (!resolve_target(target, server_addr)) {
-        Logger::error("Unable to resolve target: " + target);
-        return {};
-    }
+        if (!resolve_target(target, server_addr)) {
+            Logger::error("Unable to resolve target: " + target);
+            return {};
+        }
 
-    const size_t thread_count = std::min(static_cast<size_t>(MAX_THREADS), ports.size());
-    std::atomic<size_t> next_index{0};
-    std::vector<int> open_ports;
-    std::mutex result_mutex;
-    std::vector<std::thread> workers;
-    workers.reserve(thread_count);
+        std::vector<int> open_ports;
+        const size_t CHUNK_SIZE = 500;
 
-    for (size_t i = 0; i < thread_count; ++i) {
-        workers.emplace_back([&] {
-            while (true) {
-                const size_t index = next_index.fetch_add(1, std::memory_order_relaxed);
-                if (index >= ports.size()) {
-                    break;
-                }
+        for (size_t i = 0; i < ports.size(); i += CHUNK_SIZE) {
+            size_t end = std::min(ports.size(), i + CHUNK_SIZE);
+            size_t current_chunk_size = end - i;
 
-                const int port = ports[index];
-                if (check_port(server_addr, port, timeout_ms)) {
-                    std::lock_guard<std::mutex> lock(result_mutex);
-                    open_ports.push_back(port);
+            std::vector<int> sockets(current_chunk_size, -1);
+            std::vector<pollfd> pfds;
+            pfds.reserve(current_chunk_size);
+
+            for (size_t j = 0; j < current_chunk_size; ++j) {
+                int sock = socket(AF_INET, SOCK_STREAM, 0);
+                if (sock < 0) continue;
+
+                int flags = fcntl(sock, F_GETFL, 0);
+                fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
+                sockaddr_in addr = server_addr;
+                addr.sin_port = htons(ports[i + j]);
+
+                connect(sock, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr));
+
+                sockets[j] = sock;
+                pfds.push_back({sock, POLLOUT, 0});
+            }
+
+            if (pfds.empty()) continue;
+
+            int rc = poll(pfds.data(), pfds.size(), timeout_ms);
+            if (rc > 0) {
+                for (size_t j = 0; j < pfds.size(); ++j) {
+                    if (pfds[j].revents & (POLLOUT | POLLERR | POLLHUP)) {
+                        int error = 0;
+                        socklen_t len = sizeof(error);
+                        if (getsockopt(pfds[j].fd, SOL_SOCKET, SO_ERROR, &error, &len) == 0 && error == 0) {
+                            open_ports.push_back(ports[i + j]);
+                        }
+                    }
                 }
             }
-        });
-    }
 
-    for (auto& worker : workers) {
-        if (worker.joinable()) {
-            worker.join();
+            for (int sock : sockets) {
+                if (sock >= 0) close(sock);
+            }
         }
-    }
 
-    std::sort(open_ports.begin(), open_ports.end());
-    return open_ports;
-}
+        std::sort(open_ports.begin(), open_ports.end());
+        return open_ports;
+    }

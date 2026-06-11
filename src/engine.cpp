@@ -154,6 +154,13 @@ void Engine::print_dns_result(const DnsResult& result) const {
             std::cout << "  - " << record.type << ": " << record.value << "\n";
         }
     }
+
+    if (!result.subdomains.empty()) {
+        Logger::success("Subdomains found (" + std::to_string(result.subdomains.size()) + "):");
+        for (const auto& sub : result.subdomains) {
+            std::cout << "  - " << sub << "\n";
+        }
+    }
 }
 
 void Engine::print_whois_result(const WhoisResult& result) const {
@@ -163,6 +170,17 @@ void Engine::print_whois_result(const WhoisResult& result) const {
     }
 
     Logger::success("WHOIS data for " + result.target + " (server: " + result.whois_server + "):");
+
+    if (!result.registrar.empty()) std::cout << "  - Registrar: " << result.registrar << "\n";
+    if (!result.creation_date.empty()) std::cout << "  - Created: " << result.creation_date << "\n";
+    if (!result.expiry_date.empty()) std::cout << "  - Expires: " << result.expiry_date << "\n";
+    if (!result.name_servers.empty()) {
+        std::cout << "  - Name Servers:\n";
+        for (const auto& ns : result.name_servers) {
+            std::cout << "      " << ns << "\n";
+        }
+    }
+    std::cout << "\n  --- Raw Data ---\n";
 
     std::istringstream stream(result.raw_data);
     std::string line;
@@ -213,6 +231,16 @@ bool Engine::dump_dns_result(const DnsResult& result, const std::string& output_
         }
     }
 
+    json << "\n  ],\n"
+         << "  \"subdomains\": [";
+
+    for (size_t i = 0; i < result.subdomains.size(); ++i) {
+        json << "\n    \"" << JsonUtil::escape(result.subdomains[i]) << "\"";
+        if (i + 1 < result.subdomains.size()) {
+            json << ",";
+        }
+    }
+
     json << "\n  ]\n}";
 
     out << json.str() << std::endl;
@@ -243,6 +271,17 @@ bool Engine::dump_whois_result(const WhoisResult& result, const std::string& out
     json << "{\n"
          << "  \"target\": \""       << JsonUtil::escape(result.target)       << "\",\n"
          << "  \"whois_server\": \"" << JsonUtil::escape(result.whois_server) << "\",\n"
+         << "  \"registrar\": \"" << JsonUtil::escape(result.registrar) << "\",\n"
+         << "  \"creation_date\": \"" << JsonUtil::escape(result.creation_date) << "\",\n"
+         << "  \"expiry_date\": \"" << JsonUtil::escape(result.expiry_date) << "\",\n"
+         << "  \"name_servers\": [";
+         
+    for (size_t i = 0; i < result.name_servers.size(); ++i) {
+        json << "\"" << JsonUtil::escape(result.name_servers[i]) << "\"";
+        if (i + 1 < result.name_servers.size()) json << ", ";
+    }
+
+    json << "],\n"
          << "  \"raw_data\": [\n";
 
     for (size_t i = 0; i < lines.size(); ++i) {

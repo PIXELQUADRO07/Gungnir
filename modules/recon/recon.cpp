@@ -15,6 +15,9 @@
 #include <cerrno>
 #include <cstring>
 #include <sstream>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 namespace {
     constexpr int WHOIS_PORT = 43;
@@ -268,7 +271,52 @@ DnsResult run_dns_lookup(const std::string& target) {
         Logger::warn("No DNS records found for " + target);
     }
 
+    result.subdomains = run_dns_subdomain_enum(target);
+
     return result;
+}
+
+std::vector<std::string> run_dns_subdomain_enum(const std::string& target) {
+    const std::vector<std::string> wordlist = {
+        "www", "mail", "dev", "test", "api", "admin", "blog", "staging",
+        "vpn", "smtp", "pop", "imap", "ns1", "ns2", "ftp", "portal"
+    };
+
+    std::vector<std::string> found;
+    std::mutex result_mutex;
+    std::atomic<size_t> next_index{0};
+
+    const size_t thread_count = std::min(static_cast<size_t>(16), wordlist.size());
+    std::vector<std::thread> workers;
+    workers.reserve(thread_count);
+
+    for (size_t i = 0; i < thread_count; ++i) {
+        workers.emplace_back([&] {
+            while (true) {
+                const size_t index = next_index.fetch_add(1, std::memory_order_relaxed);
+                if (index >= wordlist.size()) break;
+
+                const std::string subdomain = wordlist[index] + "." + target;
+                addrinfo hints{};
+                hints.ai_family = AF_UNSPEC;
+                hints.ai_socktype = SOCK_STREAM;
+                addrinfo* res = nullptr;
+
+                if (getaddrinfo(subdomain.c_str(), nullptr, &hints, &res) == 0) {
+                    std::lock_guard<std::mutex> lock(result_mutex);
+                    found.push_back(subdomain);
+                    freeaddrinfo(res);
+                }
+            }
+        });
+    }
+
+    for (auto& worker : workers) {
+        if (worker.joinable()) worker.join();
+    }
+
+    std::sort(found.begin(), found.end());
+    return found;
 }
 
 WhoisResult run_whois_lookup(const std::string& target) {
@@ -315,6 +363,46 @@ WhoisResult run_whois_lookup(const std::string& target) {
 
     if (!result.success) {
         Logger::warn("No WHOIS data found for " + target);
+    } else {
+        // Parse structured fields
+        std::istringstream stream(response);
+        std::string line;
+        while (std::getline(stream, line)) {
+            // Trim carriage return
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+
+            std::string lower_line = line;
+            std::transform(lower_line.begin(), lower_line.end(), lower_line.begin(), ::tolower);
+
+            // Simple prefix matching
+            auto extract_value = [](const std::string& l, const std::string& prefix) -> std::string {
+                auto pos = l.find(":");
+                if (pos != std::string::npos && pos + 1 < l.size()) {
+                    std::string val = l.substr(pos + 1);
+                    auto begin = val.find_first_not_of(" \t");
+                    if (begin == std::string::npos) return "";
+                    auto end = val.find_last_not_of(" \t");
+                    return val.substr(begin, end - begin + 1);
+                }
+                return "";
+            };
+
+            if (lower_line.find("registrar:") == 0) {
+                if (result.registrar.empty()) result.registrar = extract_value(line, "Registrar:");
+            } else if (lower_line.find("creation date:") == 0 || lower_line.find("created:") == 0) {
+                if (result.creation_date.empty()) result.creation_date = extract_value(line, "Creation Date:");
+            } else if (lower_line.find("registry expiry date:") == 0 || lower_line.find("expiry date:") == 0) {
+                if (result.expiry_date.empty()) result.expiry_date = extract_value(line, "Registry Expiry Date:");
+            } else if (lower_line.find("name server:") == 0) {
+                std::string ns = extract_value(line, "Name Server:");
+                if (!ns.empty()) {
+                    std::transform(ns.begin(), ns.end(), ns.begin(), ::tolower);
+                    if (std::find(result.name_servers.begin(), result.name_servers.end(), ns) == result.name_servers.end()) {
+                        result.name_servers.push_back(ns);
+                    }
+                }
+            }
+        }
     }
 
     return result;
