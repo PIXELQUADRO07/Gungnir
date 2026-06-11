@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 include_directories(
     src
@@ -18,6 +19,7 @@ set(SOURCES
     src/main.cpp
     src/engine.cpp
     src/shell.cpp
+    src/updater.cpp
     modules/scraper.cpp
     modules/network/network.cpp
     modules/recon/recon.cpp
@@ -26,9 +28,14 @@ set(SOURCES
 
 add_executable(Gungnir ${SOURCES})
 
+target_link_libraries(Gungnir PRIVATE
+    Threads::Threads
+    OpenSSL::SSL
+    OpenSSL::Crypto
+)
+
 # resolv
 find_library(RESOLV_LIBRARY resolv)
-target_link_libraries(Gungnir PRIVATE Threads::Threads)
 if(RESOLV_LIBRARY)
     target_link_libraries(Gungnir PRIVATE ${RESOLV_LIBRARY})
 endif()
@@ -38,7 +45,7 @@ find_library(READLINE_LIB readline)
 if(READLINE_LIB)
     target_link_libraries(Gungnir PRIVATE ${READLINE_LIB})
     target_compile_definitions(Gungnir PRIVATE USE_READLINE)
-    message(STATUS "readline found: history and line editing enabled")
+    message(STATUS "readline trovata: history e line-editing attivi")
 else()
-    message(STATUS "readline not found: shell will use std::getline")
+    message(STATUS "readline non trovata: shell usa std::getline")
 endif()
