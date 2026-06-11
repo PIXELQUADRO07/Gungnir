@@ -9,7 +9,10 @@
 #include "scraper.hpp"
 #include "recon.hpp"
 #include "logger.hpp"
+#include "../vendor/json.hpp"
+using json = nlohmann::json;
 
+// Kept for dump helpers that build JSON manually from non-scan data
 namespace JsonUtil {
     inline std::string escape(const std::string& input) {
         std::string out;
@@ -30,23 +33,29 @@ namespace JsonUtil {
 
 struct ScanResult {
     std::string target;
-    std::vector<int> open_ports;
+    std::vector<PortInfo> ports;
+
+    // Convenience: list of open port numbers
+    std::vector<int> open_port_numbers() const {
+        std::vector<int> v;
+        v.reserve(ports.size());
+        for (const auto& p : ports) v.push_back(p.port);
+        return v;
+    }
 
     std::string to_json_string() const {
-        std::ostringstream out;
-        out << "{\n"
-            << "  \"target\": \"" << JsonUtil::escape(target) << "\",\n"
-            << "  \"open_ports\": [";
-
-        for (size_t i = 0; i < open_ports.size(); ++i) {
-            out << open_ports[i];
-            if (i + 1 < open_ports.size()) {
-                out << ", ";
-            }
+        json j;
+        j["target"] = target;
+        json arr = json::array();
+        for (const auto& pi : ports) {
+            json entry;
+            entry["port"]    = pi.port;
+            entry["service"] = pi.service;
+            if (!pi.banner.empty()) entry["banner"] = pi.banner;
+            arr.push_back(entry);
         }
-
-        out << "]\n}";
-        return out.str();
+        j["open_ports"] = arr;
+        return j.dump(2);
     }
 };
 

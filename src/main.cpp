@@ -30,8 +30,9 @@ static void show_usage() {
         "    graph    [-o output.json]\n"
         "\n"
         "  Flag:\n"
-        "    -p <ports>     Porte TCP separate da virgola (es. 22,80,443)\n"
-        "    -o <file>      Esporta risultato in JSON\n"
+        "    -p <ports>       Porte TCP separate da virgola (es. 22,80,443)\n"
+        "    -o <file>        Esporta risultato in JSON\n"
+        "    -q, --quiet      Output solo risultati (per piping/scripting)\n"
         "    -n, --no-update  Disabilita il controllo aggiornamenti\n"
         "    -v, --version\n"
         "    -h, --help\n"
@@ -95,20 +96,23 @@ static LegacyArgs parse_legacy(int argc, char* argv[]) {
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
-    // Pre-check for --no-update before everything else
+    // Pre-check global flags before banner
     bool no_update = false;
+    bool quiet     = false;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (a == "-n" || a == "--no-update") { no_update = true; break; }
+        if (a == "-n" || a == "--no-update") no_update = true;
+        if (a == "-q" || a == "--quiet")     quiet     = true;
     }
+    Logger::quiet_mode = quiet;
 
-    Logger::print_banner();
+    if (!quiet) Logger::print_banner();
 
-    if (!no_update) Updater::check();
+    if (!no_update && !quiet) Updater::check();
 
     // Config banner — inform user about API key status
     const Config& cfg = Config::instance();
-    if (cfg.get_vt_api_key().empty() && cfg.get_shodan_api_key().empty()) {
+    if (!quiet && cfg.get_vt_api_key().empty() && cfg.get_shodan_api_key().empty()) {
         Logger::info("Threat Intel: nessuna API key — aggiungi VT_API_KEY / SHODAN_API_KEY a ~/.gungnir.conf");
     }
 

@@ -13,7 +13,11 @@ struct HttpResponse {
 
 class HttpClient {
 public:
-    static HttpResponse get(const std::string& url, const std::map<std::string, std::string>& custom_headers = {});
+    static HttpResponse get(
+        const std::string& url,
+        const std::map<std::string, std::string>& custom_headers = {},
+        int timeout_s = 10
+    );
 };
 
 #endif

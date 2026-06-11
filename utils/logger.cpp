@@ -1,17 +1,26 @@
 #include "logger.hpp"
+#include "cli_utils.hpp"
 #include <iostream>
+#include <mutex>
 
+// ─── thread-safety ────────────────────────────────────────────────────────────
+static std::mutex s_log_mutex;
 
-const std::string RESET   = "\033[0m";
-const std::string CYAN    = "\033[36m";
-const std::string RED     = "\033[31m";
-const std::string GREEN   = "\033[32m";
-const std::string BLUE    = "\033[34m";
-const std::string GRAY    = "\033[90m";
+// ─── global state ─────────────────────────────────────────────────────────────
+bool Logger::quiet_mode = false;
+
+// ─── ANSI colours ─────────────────────────────────────────────────────────────
+static const char* RESET  = "\033[0m";
+static const char* CYAN   = "\033[36m";
+static const char* RED    = "\033[31m";
+static const char* GREEN  = "\033[32m";
+static const char* BLUE   = "\033[34m";
 
 void Logger::print_banner() {
-    const std::string spear = R"GNRSPEAR(
-                                ,-.
+    std::lock_guard<std::mutex> lk(s_log_mutex);
+    // banner version is read from GUNGNIR_VERSION (defined in cli_utils.hpp)
+    std::cout << R"BANNER(
+                                ,-. 
                                ("O_)
                               / `-/
                              /-. /
@@ -38,30 +47,42 @@ ___<__(|) _   ""-/  / /   /
       /  / /   /  o!O
      /  |,'   /
     :   /    /
-    [  /    ,'   "GUNGNIR V1.0"
-     `-._  /
+    [  /    ,'   ")BANNER"
+        << "\"" << GUNGNIR_VERSION << "\"\n"
+        << R"BANNER(     `-._  /
      `-._ /
     | / ,'
     |,-'
     P'
-)GNRSPEAR";
-
-
-    std::cout << spear << std::endl;
+)BANNER";
 }
 
 void Logger::info(const std::string& msg) {
-    std::cout << "[" << BLUE << "*" << RESET << "] " << msg << std::endl;
+    if (quiet_mode) return;
+    std::lock_guard<std::mutex> lk(s_log_mutex);
+    std::cout << "[" << BLUE << "*" << RESET << "] " << msg << "\n";
 }
 
 void Logger::success(const std::string& msg) {
-    std::cout << "[" << GREEN << "+" << RESET << "] " << msg << std::endl;
+    if (quiet_mode) return;
+    std::lock_guard<std::mutex> lk(s_log_mutex);
+    std::cout << "[" << GREEN << "+" << RESET << "] " << msg << "\n";
 }
 
 void Logger::warn(const std::string& msg) {
-    std::cout << "[" << CYAN << "!" << RESET << "] " << msg << std::endl;
+    if (quiet_mode) return;
+    std::lock_guard<std::mutex> lk(s_log_mutex);
+    std::cout << "[" << CYAN << "!" << RESET << "] " << msg << "\n";
 }
 
 void Logger::error(const std::string& msg) {
-    std::cerr << "[" << RED << "-" << RESET << "] Error: " << msg << std::endl;
+    // errors always print, even in quiet mode
+    std::lock_guard<std::mutex> lk(s_log_mutex);
+    std::cerr << "[" << RED << "-" << RESET << "] " << msg << "\n";
+}
+
+void Logger::result(const std::string& msg) {
+    // result always prints (used for final data output, piping, scripting)
+    std::lock_guard<std::mutex> lk(s_log_mutex);
+    std::cout << msg << "\n";
 }

@@ -88,11 +88,11 @@ ScanResult Engine::run_scan(
 
     ScanResult result;
     result.target = target;
-    result.open_ports = start_native_scan(target, scan_ports, 1000);
-    
-    db.save_scan(target, result.open_ports);
+    result.ports  = start_native_scan(target, scan_ports, 1000);
 
-    const auto end_time = std::chrono::steady_clock::now();
+    db.save_scan(target, result.open_port_numbers());
+
+    const auto end_time   = std::chrono::steady_clock::now();
     const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
     Logger::info("Scan completed in " + std::to_string(elapsed_ms) + " ms");
 
@@ -175,14 +175,23 @@ bool Engine::run_campaign(const std::string& target, const std::vector<int>& por
 }
 
 void Engine::print_scan_result(const ScanResult& result) const {
-    if (result.open_ports.empty()) {
+    if (result.ports.empty()) {
         Logger::info("No open ports detected on " + result.target);
         return;
     }
 
     Logger::success("Open ports on " + result.target + ":");
-    for (int port : result.open_ports) {
-        std::cout << "  - " << port << "\n";
+    for (const auto& pi : result.ports) {
+        std::string line = "  \033[32m" + std::to_string(pi.port) + "\033[0m";
+        if (!pi.service.empty())
+            line += "  \033[36m" + pi.service + "\033[0m";
+        if (!pi.banner.empty()) {
+            // Show first line of banner only
+            std::string first_line = pi.banner.substr(0, pi.banner.find('\n'));
+            if (first_line.size() > 80) first_line = first_line.substr(0, 80) + "...";
+            line += "  \"" + first_line + "\"";
+        }
+        Logger::result(line);
     }
 }
 
