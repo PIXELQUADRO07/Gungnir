@@ -6,6 +6,8 @@
 #include "updater.hpp"
 #include "engine.hpp"
 #include "shell.hpp"
+#include "config.hpp"
+#include "logger.hpp"
 
 // ─── usage ────────────────────────────────────────────────────────────────────
 
@@ -23,10 +25,14 @@ static void show_usage() {
         "    whois    <target> [-o file]\n"
         "    scrape   <target>\n"
         "    campaign <target> [-p ports]\n"
+        "    threat   <target>\n"
+        "    history  [target]\n"
+        "    graph    [-o output.json]\n"
         "\n"
         "  Flag:\n"
-        "    -p <ports>   Porte TCP separate da virgola (es. 22,80,443)\n"
-        "    -o <file>    Esporta risultato in JSON\n"
+        "    -p <ports>     Porte TCP separate da virgola (es. 22,80,443)\n"
+        "    -o <file>      Esporta risultato in JSON\n"
+        "    -n, --no-update  Disabilita il controllo aggiornamenti\n"
         "    -v, --version\n"
         "    -h, --help\n"
         "\n"
@@ -37,6 +43,13 @@ static void show_usage() {
         "    ./Gungnir whois  example.com -o whois.json\n"
         "    ./Gungnir scrape user123\n"
         "    ./Gungnir campaign example.com -p 80,443\n"
+        "    ./Gungnir threat example.com\n"
+        "    ./Gungnir history\n"
+        "    ./Gungnir graph -o out.json\n"
+        "\n"
+        "  Config (~/.gungnir.conf):\n"
+        "    VT_API_KEY      = <chiave_virustotal>\n"
+        "    SHODAN_API_KEY  = <chiave_shodan>\n"
         "\n"
         "  Stile legacy (ancora supportato):\n"
         "    ./Gungnir -t example.com -m scan -p 22,80,443\n"
@@ -82,8 +95,22 @@ static LegacyArgs parse_legacy(int argc, char* argv[]) {
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
+    // Pre-check for --no-update before everything else
+    bool no_update = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "-n" || a == "--no-update") { no_update = true; break; }
+    }
+
     Logger::print_banner();
-    Updater::check();
+
+    if (!no_update) Updater::check();
+
+    // Config banner — inform user about API key status
+    const Config& cfg = Config::instance();
+    if (cfg.get_vt_api_key().empty() && cfg.get_shodan_api_key().empty()) {
+        Logger::info("Threat Intel: nessuna API key — aggiungi VT_API_KEY / SHODAN_API_KEY a ~/.gungnir.conf");
+    }
 
     // No arguments → interactive shell
     if (argc == 1) {
@@ -96,6 +123,9 @@ int main(int argc, char* argv[]) {
 
     // ── global flags ──────────────────────────────────────────────────────────
     if (first == "-h" || first == "--help")    { show_usage(); return 0; }
+    if (first == "-n" || first == "--no-update") {
+        // already handled; fall through to next arg
+    }
     if (first == "-v" || first == "--version") {
         std::cout << GUNGNIR_VERSION << "\n";
         return 0;
@@ -114,17 +144,22 @@ int main(int argc, char* argv[]) {
         {"whois",    {false}},
         {"scrape",   {false}},
         {"campaign", {true }},
+        {"threat",   {false}},
+        {"history",  {false}},
+        {"graph",    {false}},
     };
 
     auto cmd_it = known_commands.find(first);
     if (cmd_it != known_commands.end()) {
         const ParsedArgs pa = parse_subcommand(argc, argv, cmd_it->second.ports_ok);
-        if (pa.target.empty()) {
+        bool needs_target = (first != "graph" && first != "history");
+        if (needs_target && pa.target.empty()) {
             Logger::error("Target mancante.  Uso: ./Gungnir " + first + " <target>");
             return 1;
         }
         Engine engine;
-        return engine.execute(first, pa.target, pa.output_file, pa.ports) ? 0 : 1;
+        std::string t = pa.target.empty() ? "dummy" : pa.target;
+        return engine.execute(first, t, pa.output_file, pa.ports) ? 0 : 1;
     }
 
     // ── legacy flag style: ./Gungnir -t example.com -m scan [...] ─────────────

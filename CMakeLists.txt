@@ -9,28 +9,30 @@ find_package(OpenSSL REQUIRED)
 find_package(CURL REQUIRED)
 find_package(SQLite3 REQUIRED)
 
-include_directories(
-    src
-    modules
-    modules/network
-    modules/recon
-    utils
-)
-
 set(SOURCES
     src/main.cpp
     src/engine.cpp
     src/shell.cpp
     src/updater.cpp
     src/database.cpp
+    src/config.cpp
     modules/scraper.cpp
     modules/network/network.cpp
     modules/network/http_client.cpp
     modules/recon/recon.cpp
+    modules/recon/threat_intel.cpp
     utils/logger.cpp
 )
 
 add_executable(Gungnir ${SOURCES})
+
+target_include_directories(Gungnir PRIVATE
+    src
+    modules
+    modules/network
+    modules/recon
+    utils
+)
 
 target_link_libraries(Gungnir PRIVATE
     Threads::Threads

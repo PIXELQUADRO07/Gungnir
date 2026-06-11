@@ -1,0 +1,13 @@
+{
+  "nodes": [
+    { "id": "80", "type": "port" },
+    { "id": "2600:3c01::f03c:91ff:fe18:bb2f", "type": "ip" },
+    { "id": "45.33.32.156", "type": "ip" },
+    { "id": "scanme.nmap.org", "type": "domain" }
+  ],
+  "edges": [
+    { "source": "scanme.nmap.org", "target": "45.33.32.156", "label": "A" },
+    { "source": "scanme.nmap.org", "target": "2600:3c01::f03c:91ff:fe18:bb2f", "label": "AAAA" },
+    { "source": "scanme.nmap.org", "target": "80", "label": "has_open_port" }
+  ]
+}

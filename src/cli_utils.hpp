@@ -7,8 +7,8 @@
 
 // ─── version ──────────────────────────────────────────────────────────────────
 
-inline constexpr const char* GUNGNIR_VERSION     = "Gungnir v1.0.0-Alpha (C++20)";
-inline constexpr const char* GUNGNIR_VERSION_NUM = "1.0.0";
+inline constexpr const char* GUNGNIR_VERSION     = "Gungnir v1.2.0 (C++20)";
+inline constexpr const char* GUNGNIR_VERSION_NUM = "1.2.0";
 inline constexpr const char* GUNGNIR_REPO_OWNER  = "PIXELQUADRO07";
 inline constexpr const char* GUNGNIR_REPO_NAME   = "Gungnir";
 
@@ -119,6 +119,8 @@ inline ParsedArgs parse_args(
                 continue;
             }
             result.output_file = tokens[++i];
+        } else if (t == "-n" || t == "--no-update") {
+            // handled globally in main(); safe to ignore here
         } else if (t[0] == '-') {
             Logger::warn("Flag sconosciuta ignorata: " + t + ". Digita 'help' per la lista.");
         } else if (result.target.empty()) {

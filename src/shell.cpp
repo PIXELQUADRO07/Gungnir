@@ -78,6 +78,38 @@ Shell::Shell() {
             return true;
         });
 
+    // threat
+    register_command("threat", /*ports_ok=*/false,
+        "threat <target>                      Query VT or Shodan for Threat Intel",
+        [this](const std::vector<std::string>& args) -> bool {
+            const auto pa = parse_args(args, 1, /*ports_supported=*/false);
+            if (pa.target.empty()) {
+                Logger::warn("Usage: threat <target>");
+                return true;
+            }
+            engine_.execute("threat", pa.target, {}, {});
+            return true;
+        });
+
+    // history
+    register_command("history", /*ports_ok=*/false,
+        "history [target]                     Mostra storico scan dal DB locale",
+        [this](const std::vector<std::string>& args) -> bool {
+            std::string tgt = (args.size() > 1) ? args[1] : "";
+            engine_.execute("history", tgt.empty() ? "dummy" : tgt, {}, {});
+            return true;
+        });
+
+    // graph
+    register_command("graph", /*ports_ok=*/false,
+        "graph [-o file]                      Esporta DB locale in JSON graph",
+        [this](const std::vector<std::string>& args) -> bool {
+            const auto pa = parse_args(args, 1, /*ports_supported=*/false);
+            std::string outfile = pa.output_file.empty() ? "graph.json" : pa.output_file;
+            engine_.execute("graph", "dummy", outfile, {});
+            return true;
+        });
+
     // use — set active module; list derived from registered recon commands
     register_command("use", /*ports_ok=*/false,
         "use <module>                         Set active module",
@@ -166,7 +198,7 @@ void Shell::register_command(
         help_lines_.push_back("  " + help_line);
 
     // track recon modules (those with actual targets)
-    const std::set<std::string> recon = {"scan","dns","whois","scrape","campaign"};
+    const std::set<std::string> recon = {"scan","dns","whois","scrape","campaign","threat","history"};
     if (recon.count(name))
         recon_modules_[name] = ports_ok;
 }

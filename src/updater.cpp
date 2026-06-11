@@ -148,36 +148,43 @@ std::string https_get(const std::string& host, const std::string& path) {
 
 }  // namespace
 
-// ─── public API ───────────────────────────────────────────────────────────────
+#include <thread>
+#include <cstdlib>
 
 void Updater::check() {
-    const std::string host = "api.github.com";
-    const std::string path = std::string("/repos/") +
-                             GUNGNIR_REPO_OWNER + "/" +
-                             GUNGNIR_REPO_NAME  +
-                             "/releases/latest";
-
-    const std::string body = https_get(host, path);
-    if (body.empty()) {
-        // Silent fail — no network, firewall, etc. Don't spam the user.
+    if (std::getenv("GUNGNIR_NO_UPDATE") != nullptr) {
         return;
     }
 
-    const std::string tag      = json_string_field(body, "tag_name");
-    const std::string html_url = json_string_field(body, "html_url");
+    std::cout << "[*] Checking updates...\n";
 
-    if (tag.empty()) return;
+    std::thread([]() {
+        const std::string host = "api.github.com";
+        const std::string path = std::string("/repos/") +
+                                 GUNGNIR_REPO_OWNER + "/" +
+                                 GUNGNIR_REPO_NAME  +
+                                 "/releases/latest";
 
-    // Strip leading 'v' from tag (e.g. "v1.2.0" → "1.2.0")
-    std::string remote_ver = tag;
-    if (!remote_ver.empty() && remote_ver[0] == 'v')
-        remote_ver.erase(0, 1);
+        const std::string body = https_get(host, path);
+        if (body.empty()) {
+            return;
+        }
 
-    if (is_newer(GUNGNIR_VERSION_NUM, remote_ver)) {
-        std::cout << "\n";
-        Logger::warn("Nuova versione disponibile: " + tag +
-                     "  (locale: v" + GUNGNIR_VERSION_NUM + ")");
-        Logger::info("Scarica: " + html_url);
-        std::cout << "\n";
-    }
+        const std::string tag      = json_string_field(body, "tag_name");
+        const std::string html_url = json_string_field(body, "html_url");
+
+        if (tag.empty()) return;
+
+        std::string remote_ver = tag;
+        if (!remote_ver.empty() && remote_ver[0] == 'v')
+            remote_ver.erase(0, 1);
+
+        if (is_newer(GUNGNIR_VERSION_NUM, remote_ver)) {
+            std::cout << "\n";
+            Logger::warn("Nuova versione disponibile: " + tag +
+                         "  (locale: v" + GUNGNIR_VERSION_NUM + ")");
+            Logger::info("Scarica: " + html_url);
+            std::cout << "\n";
+        }
+    }).detach();
 }

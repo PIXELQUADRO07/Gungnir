@@ -28,7 +28,7 @@ namespace {
     }
 }
 
-HttpResponse HttpClient::get(const std::string& url) {
+HttpResponse HttpClient::get(const std::string& url, const std::map<std::string, std::string>& custom_headers) {
     HttpResponse response;
     CURL* curl = curl_easy_init();
     if (!curl) return response;
@@ -41,12 +41,24 @@ HttpResponse HttpClient::get(const std::string& url) {
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
 
+    struct curl_slist* chunk = nullptr;
+    for (const auto& kv : custom_headers) {
+        std::string h = kv.first + ": " + kv.second;
+        chunk = curl_slist_append(chunk, h.c_str());
+    }
+    if (chunk) {
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, chunk);
+    }
+
     CURLcode res = curl_easy_perform(curl);
     if (res == CURLE_OK) {
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response.status_code);
         response.success = true;
     }
 
+    if (chunk) {
+        curl_slist_free_all(chunk);
+    }
     curl_easy_cleanup(curl);
     return response;
 }
