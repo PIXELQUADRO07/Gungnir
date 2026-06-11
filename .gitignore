@@ -1,0 +1,39 @@
+# Build artifacts
+/build/
+
+# CMake generated files
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/Makefile
+/Makefile.cmake
+/Makefile2
+/CMakeLists.txt.user
+/CMakeLists.txt.user.[0-9]*
+
+# Compiler artifacts
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.lib
+*.out
+
+# Temporary files
+*~
+*.swp
+*.tmp
+*.log
+
+# IDE/editor files
+.vscode/
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+
+# CMake compilation database
+compile_commands.json
