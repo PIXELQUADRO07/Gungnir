@@ -4,6 +4,7 @@
 #include "threat_intel.hpp"
 #include "nmap.hpp"
 #include "searchsploit.hpp"
+#include "report_gen.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -122,15 +123,24 @@ public:
     std::string name() const override { return "report"; }
     std::string help() const override { return "Generate HTML/JSON reports"; }
     bool run(Context& ctx) override {
-        std::string fmt = "html";
-        if (!ctx.output_file.empty()) {
-            if (ctx.output_file.find(".json") != std::string::npos) fmt = "json";
+        ReportGen::Format format = ReportGen::Format::HTML;
+        std::string out = ctx.output_file;
+
+        if (out.empty()) {
+            out = "report_" + ctx.target + ".html";
+        } else if (out.find(".json") != std::string::npos) {
+            format = ReportGen::Format::JSON;
         }
         
-        Logger::info("Generating " + fmt + " report...");
-        // Qui andrebbe la logica di query + template
-        Logger::success("Report generated (simulated)");
-        return true;
+        Logger::info("Generating report for " + ctx.target + "...");
+        
+        if (ReportGen::generate(ctx.target, out, format, ctx.db)) {
+            Logger::success("Report generated: " + out);
+            return true;
+        } else {
+            Logger::error("Failed to generate report.");
+            return false;
+        }
     }
 };
 

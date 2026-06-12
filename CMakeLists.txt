@@ -16,6 +16,7 @@ set(SOURCES
     src/database.cpp
     src/config.cpp
     src/workspace.cpp
+    src/report_gen.cpp
     modules/scraper.cpp
     modules/network/network.cpp
     modules/network/http_client.cpp
@@ -57,4 +58,38 @@ if(READLINE_LIB)
     message(STATUS "readline found — shell history enabled")
 else()
     message(STATUS "readline not found — shell will use std::getline")
+endif()
+
+# ─── Installation ─────────────────────────────────────────────────────────────
+
+install(TARGETS Gungnir RUNTIME DESTINATION bin)
+
+# ─── Testing ──────────────────────────────────────────────────────────────────
+
+option(BUILD_TESTS "Build unit tests" ON)
+
+if(BUILD_TESTS)
+    enable_testing()
+    include(FetchContent)
+    FetchContent_Declare(
+      googletest
+      URL https://github.com/google/googletest/archive/refs/heads/main.zip
+    )
+    # For Windows: prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    add_executable(gungnir_tests
+        tests/test_main.cpp
+        tests/test_logger.cpp
+        tests/test_config.cpp
+        # Add core logic sources for testing
+        utils/logger.cpp
+        src/config.cpp
+    )
+    target_link_libraries(gungnir_tests PRIVATE gtest_main)
+    target_include_directories(gungnir_tests PRIVATE src utils modules vendor)
+    
+    include(GoogleTest)
+    gtest_discover_tests(gungnir_tests)
 endif()

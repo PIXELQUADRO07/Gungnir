@@ -11,24 +11,49 @@ It provides port scanning, DNS and WHOIS reconnaissance, command-line subcommand
 - Flexible port selection via `-p`
 - DNS lookup module for A, AAAA, NS, MX, TXT, SOA, and CNAME
 - WHOIS resolution with referral chasing through IANA, registry, and registrar servers
-- JSON export support via `-o`
-- Extensible OSINT scraping skeleton
-- Colored logging and progress feedback
+- HTML and JSON report generation
+- Integration with Nmap and Searchsploit
 - Interactive shell with module context, history support, and command registry
-- Subcommand CLI pattern for clean commands like `./Gungnir scan example.com`
+- SQLite3 persistence for all scan results
 
-## 📦 Build
+## 📦 Build & Install
+
+### Dependencies
+
+- **C++20** compiler (GCC 10+ or Clang 10+)
+- **CMake** 3.15+
+- **libcurl**
+- **sqlite3**
+- **readline** (optional, for shell history)
+- **nmap** (optional, for service detection)
+- **exploitdb** (optional, for searchsploit)
+
+On Debian/Ubuntu, you can use the provided setup script:
+
+```bash
+sudo ./setup.sh
+```
+
+### Compilation
 
 ```bash
 cmake -B build
 cmake --build build
 ```
 
-Optional: enable readline support for shell history and line editing.
+### Installation
 
 ```bash
-sudo apt install libreadline-dev
-cmake -B build && cmake --build build
+sudo cmake --install build
+```
+
+## ⚙️ Configuration
+
+Gungnir looks for a configuration file at `~/.gungnir.conf`. Example format:
+
+```ini
+VT_API_KEY     = your_virustotal_key
+SHODAN_API_KEY = your_shodan_key
 ```
 
 ## 💡 Usage
@@ -37,74 +62,42 @@ cmake -B build && cmake --build build
 
 ```bash
 ./Gungnir scan   example.com
-./Gungnir scan   example.com -p 22,80,443
-./Gungnir scan   example.com -p 22,80,443 -o result.json
+./Gungnir nmap   example.com -p 80,443
 ./Gungnir dns    example.com
-./Gungnir dns    example.com -o dns.json
-./Gungnir whois  example.com
-./Gungnir whois  example.com -o whois.json
-./Gungnir scrape user123
+./Gungnir report example.com -o report.html
+./Gungnir searchsploit "apache 2.4"
 ```
 
 ### Interactive shell
 
-Start the shell with no arguments or `-i`:
+Start the shell with no arguments:
 
 ```bash
 ./Gungnir
-./Gungnir -i
 ```
 
-Example shell session:
-
-```text
-Gungnir > scan example.com -p 80,443
-Gungnir > dns example.com
-Gungnir > whois example.com -o out.json
-Gungnir > scrape user123
-
-Gungnir > use scan
-gungnir(scan) > run example.com -p 22,80,443
-gungnir(scan) > run 192.168.1.1
-
-Gungnir > help
-Gungnir > clear
-Gungnir > version
-Gungnir > exit
-```
-
-## 🧭 Shell commands
+## 🧭 Commands
 
 | Command | Description |
 |---------|-------------|
-| `scan <target> [-p ports] [-o file]` | Run a TCP port scan |
-| `dns <target> [-o file]` | Perform DNS lookup |
-| `whois <target> [-o file]` | Perform WHOIS lookup |
-| `scrape <target>` | Execute OSINT scraping flow |
-| `use <module>` | Select active module (scan, dns, whois, scrape) |
-| `run <target> [flags]` | Run the selected module |
-| `banner` | Display the banner |
-| `clear` | Clear the terminal screen |
-| `version` | Show version information |
-| `help` / `?` | Show help list |
-| `exit` / `quit` | Exit the shell |
+| `scan <target>` | Fast TCP port scan |
+| `nmap <target>` | Nmap service detection (requires nmap) |
+| `dns <target>` | Perform DNS lookup |
+| `whois <target>`| Perform WHOIS lookup |
+| `threat <target>`| Threat Intel (requires API keys) |
+| `report <target>`| Generate HTML/JSON report |
+| `history` | Show scan history |
+| `graph` | Export JSON graph for visualization |
 
-## 🧪 Legacy flag style
+## 🛠 Developer Guide
 
-The legacy flag-style interface is still supported:
+### Adding a Module
 
-```bash
-./Gungnir -t example.com -m scan -p 22,80,443 -o result.json
-./Gungnir -t example.com -m dns
-./Gungnir -t example.com -m whois -o whois.json
-```
+1. Create your module implementation in `modules/`.
+2. Inherit from the `Module` class (see `src/module.hpp`).
+3. Register your module in `src/engine.cpp`.
+4. Add your `.cpp` file to `CMakeLists.txt`.
 
-## 📌 Notes
+## 📜 License
 
-- `scan` uses a default port list when `-p` is omitted.
-- `scan`, `dns`, and `whois` report elapsed time on completion.
-- `dns` queries A, AAAA, NS, MX, TXT, and SOA records, with CNAME as fallback.
-- `whois` follows referrals from IANA → registry → registrar.
-- `whois` requires outbound TCP on port 43.
-- `scrape` is currently a scaffold for future OSINT modules.
-- Readline support adds shell history, line editing, and reverse search when available.
+This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.

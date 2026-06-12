@@ -47,6 +47,9 @@ public:
     // History
     std::vector<HistoryEntry> get_history(const std::string& target = "");
 
+    // Services
+    std::vector<ServiceInfo> get_services(const std::string& target);
+
     // Export Graph
     bool export_graph_json(const std::string& output_file);
 

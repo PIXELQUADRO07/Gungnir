@@ -24,7 +24,8 @@ Database::Database() : Database(get_gungnir_data_dir() + "/data.db") {}
 
 Database::Database(const std::string& db_path) : db_handle(nullptr) {
     if (sqlite3_open(db_path.c_str(), &db_handle) != SQLITE_OK) {
-        Logger::error("Cannot open database: " + db_path);
+        std::string err = db_handle ? sqlite3_errmsg(db_handle) : "Memory allocation failed";
+        Logger::error("Cannot open database: " + db_path + " (" + err + ")");
         db_handle = nullptr;
     }
 }
@@ -79,8 +80,9 @@ bool Database::init() {
 
     char* err_msg = nullptr;
     if (sqlite3_exec(db_handle, schema, nullptr, nullptr, &err_msg) != SQLITE_OK) {
-        Logger::error("SQL error on init: " + std::string(err_msg));
-        sqlite3_free(err_msg);
+        std::string err = err_msg ? err_msg : "Unknown error";
+        Logger::error("SQL error on init: " + err);
+        if (err_msg) sqlite3_free(err_msg);
         return false;
     }
     return true;
@@ -212,6 +214,35 @@ std::vector<HistoryEntry> Database::get_history(const std::string& target) {
     }
 
     return entries;
+}
+
+std::vector<ServiceInfo> Database::get_services(const std::string& target) {
+    std::vector<ServiceInfo> services;
+    if (!db_handle) return services;
+
+    const char* sql = "SELECT port, protocol, service, product, version, banner, cpe FROM services WHERE target = ?;";
+    sqlite3_stmt* stmt;
+
+    if (sqlite3_prepare_v2(db_handle, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        Logger::error("SQL error prepare get_services: " + std::string(sqlite3_errmsg(db_handle)));
+        return services;
+    }
+
+    sqlite3_bind_text(stmt, 1, target.c_str(), -1, SQLITE_TRANSIENT);
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        ServiceInfo s;
+        s.port     = sqlite3_column_int(stmt, 0);
+        s.protocol = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+        s.service  = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+        s.product  = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        s.version  = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4));
+        s.banner   = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5));
+        s.cpe      = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+        services.push_back(s);
+    }
+    sqlite3_finalize(stmt);
+    return services;
 }
 
 // ─── export_graph_json ────────────────────────────────────────────────────────
