@@ -18,12 +18,8 @@ set(SOURCES
     modules/scraper.cpp
     modules/network/network.cpp
     modules/network/http_client.cpp
-    modules/recon
-    modules/nmap
-    modules/searchsploit/recon.cpp
-    modules/recon
-    modules/nmap
-    modules/searchsploit/threat_intel.cpp
+    modules/recon/recon.cpp
+    modules/recon/threat_intel.cpp
     modules/nmap/nmap.cpp
     modules/searchsploit/searchsploit.cpp
     utils/logger.cpp
@@ -48,13 +44,11 @@ target_link_libraries(Gungnir PRIVATE
     SQLite::SQLite3
 )
 
-# resolv — needed by recon.cpp for res_query / res_init
 find_library(RESOLV_LIB resolv)
 if(RESOLV_LIB)
     target_link_libraries(Gungnir PRIVATE ${RESOLV_LIB})
 endif()
 
-# readline — optional; enables history and line-editing in the interactive shell
 find_library(READLINE_LIB readline)
 if(READLINE_LIB)
     target_link_libraries(Gungnir PRIVATE ${READLINE_LIB})
