@@ -106,6 +106,10 @@ public:
     bool       run_history(const std::string& target);
     bool       run_nmap        (const std::string& target, const std::string& output_file, const std::vector<int>& ports);
     bool       run_searchsploit(const std::string& query,  const std::string& output_file);
+    bool       run_takeover    (const std::string& target);
+    bool       run_fuzz        (const std::string& target);
+    bool       run_s3          (const std::string& target);
+    bool       run_breach      (const std::string& target);
 
 public:
     // ── printers ──────────────────────────────────────────────────────────────

@@ -152,3 +152,61 @@ ScrapeResult start_web_scrape(const std::string& target) {
 
     return result;
 }
+
+std::vector<FuzzResult> start_web_fuzz(const std::string& target) {
+    std::vector<FuzzResult> results;
+    std::string base_url = target;
+    if (base_url.find("http") != 0) base_url = "http://" + base_url;
+    if (base_url.back() != '/') base_url += "/";
+
+    const std::vector<std::string> wordlist = {
+        ".env", ".git/config", "wp-config.php", "config.php", "config.json",
+        "admin/", "login.php", "setup.sh", "backup.zip", "data.sql",
+        ".htaccess", ".ssh/id_rsa", "phpinfo.php", "api/v1/", "v1/api/"
+    };
+
+    Logger::info("Fuzzing " + base_url + " for sensitive files...");
+
+    for (const auto& path : wordlist) {
+        std::string url = base_url + path;
+        HttpResponse resp = HttpClient::get(url, {}, 5); // Short timeout for fuzzing
+        if (resp.status_code != 404 && resp.status_code != 0) {
+            results.push_back({url, resp.status_code, resp.body.length()});
+        }
+    }
+
+    return results;
+}
+
+std::vector<S3Result> start_s3_enum(const std::string& target) {
+    std::vector<S3Result> results;
+    std::string base = target;
+    // Remove TLD for better bucket naming
+    size_t last_dot = base.find_last_of('.');
+    if (last_dot != std::string::npos) base = base.substr(0, last_dot);
+
+    const std::vector<std::string> suffixes = {
+        "", "test", "dev", "prod", "public", "data", "backup", "files", "assets", "logs"
+    };
+
+    Logger::info("Enumerating S3 buckets for " + base + "...");
+
+    for (const auto& s : suffixes) {
+        std::string bucket = base;
+        if (!s.empty()) bucket += "-" + s;
+        
+        std::string url = "http://" + bucket + ".s3.amazonaws.com";
+        HttpResponse resp = HttpClient::get(url, {}, 5);
+        
+        if (resp.status_code != 404 && resp.status_code != 0) {
+            S3Result r;
+            r.bucket_name = bucket;
+            r.exists = true;
+            // If we get 200 or 403, it exists. 200 means public listing.
+            if (resp.status_code == 200) r.public_read = true;
+            results.push_back(r);
+        }
+    }
+
+    return results;
+}

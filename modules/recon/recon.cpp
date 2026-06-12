@@ -420,6 +420,60 @@ std::string run_reverse_dns(const std::string& ip) {
     return "";
 }
 
+TakeoverResult check_subdomain_takeover(const std::string& subdomain) {
+    TakeoverResult res;
+    res.subdomain = subdomain;
+
+    // Get CNAME
+    unsigned char buf[4096];
+    int len = res_query(subdomain.c_str(), ns_c_in, ns_t_cname, buf, sizeof(buf));
+    if (len < 0) return res;
+
+    ns_msg handle;
+    if (ns_initparse(buf, len, &handle) < 0) return res;
+
+    for (int i = 0; i < ns_msg_count(handle, ns_s_an); ++i) {
+        ns_rr rr;
+        if (ns_parserr(&handle, ns_s_an, i, &rr) == 0) {
+            char cname[MAXDNAME];
+            if (ns_name_uncompress(ns_msg_base(handle), ns_msg_end(handle), ns_rr_rdata(rr), cname, sizeof(cname)) >= 0) {
+                res.cname = cname;
+                break;
+            }
+        }
+    }
+
+    if (res.cname.empty()) return res;
+
+    // Common signatures
+    struct Sig { std::string domain; std::string provider; std::string error; };
+    static const std::vector<Sig> signatures = {
+        {"github.io", "GitHub Pages", "404 Not Found"},
+        {"herokudns.com", "Heroku", "No such app"},
+        {"herokuapp.com", "Heroku", "No such app"},
+        {"s3.amazonaws.com", "AWS S3", "NoSuchBucket"},
+        {"cloudfront.net", "AWS CloudFront", "Bad Gateway"},
+        {"azurewebsites.net", "Azure", "404 Not Found"},
+        {"bitbucket.io", "Bitbucket", "404 Not Found"},
+        {"zendesk.com", "Zendesk", "No help center found"},
+        {"shopify.com", "Shopify", "No such shop"}
+    };
+
+    for (const auto& sig : signatures) {
+        if (res.cname.find(sig.domain) != std::string::npos) {
+            res.provider = sig.provider;
+            // Verify if the provider actually reports a missing service
+            HttpResponse h_resp = HttpClient::get("http://" + subdomain);
+            if (h_resp.status_code == 404 || h_resp.body.find(sig.error) != std::string::npos) {
+                res.vulnerable = true;
+            }
+            break;
+        }
+    }
+
+    return res;
+}
+
 WhoisResult run_whois_lookup(const std::string& target) {
     WhoisResult result;
     result.target = target;

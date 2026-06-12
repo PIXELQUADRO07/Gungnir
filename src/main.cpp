@@ -33,6 +33,10 @@ static void show_usage() {
         "    graph    [-o file]\n"
         "    nmap     <target> [-p ports] [-o file]\n"
         "    searchsploit <query> [-o file]\n"
+        "    takeover <target>\n"
+        "    fuzz     <target>\n"
+        "    s3       <target>\n"
+        "    breach   <email>\n"
         "\n"
         "  Flags:\n"
         "    -p <ports>       Comma-separated TCP ports (e.g. 22,80,443)\n"
@@ -81,6 +85,10 @@ static const std::map<std::string, CmdInfo> COMMANDS = {
     {"graph",    {false, false}},   // target unused
     {"nmap",     {true,  true }},
     {"searchsploit", {false, true }},
+    {"takeover", {false, true }},
+    {"fuzz",     {false, true }},
+    {"s3",       {false, true }},
+    {"breach",   {false, true }},
 };
 
 // ─── legacy flag parsing ──────────────────────────────────────────────────────

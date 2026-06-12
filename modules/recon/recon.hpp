@@ -31,8 +31,18 @@ struct WhoisResult {
     bool success = false;
 };
 
+struct TakeoverResult {
+    std::string subdomain;
+    std::string cname;
+    std::string provider;
+    bool vulnerable = false;
+};
+
 // Performs DNS lookups for A, AAAA, MX, NS, TXT and CNAME records.
 DnsResult run_dns_lookup(const std::string& target);
+
+// Checks if a subdomain is vulnerable to takeover based on its CNAME record.
+TakeoverResult check_subdomain_takeover(const std::string& subdomain);
 
 // Performs a brute-force subdomain enumeration using a built-in wordlist.
 std::vector<std::string> run_dns_subdomain_enum(const std::string& target);

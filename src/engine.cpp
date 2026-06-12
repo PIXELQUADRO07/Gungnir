@@ -95,6 +95,42 @@ public:
     bool run(Context& ctx) override { return e.run_searchsploit(ctx.target, ctx.output_file); }
 };
 
+class TakeoverModule : public Module {
+    Engine& e;
+public:
+    TakeoverModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "takeover"; }
+    std::string help() const override { return "Check for subdomain takeover"; }
+    bool run(Context& ctx) override { return e.run_takeover(ctx.target); }
+};
+
+class FuzzModule : public Module {
+    Engine& e;
+public:
+    FuzzModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "fuzz"; }
+    std::string help() const override { return "Lightweight web fuzzing"; }
+    bool run(Context& ctx) override { return e.run_fuzz(ctx.target); }
+};
+
+class S3Module : public Module {
+    Engine& e;
+public:
+    S3Module(Engine& engine) : e(engine) {}
+    std::string name() const override { return "s3"; }
+    std::string help() const override { return "Enumerate S3 buckets"; }
+    bool run(Context& ctx) override { return e.run_s3(ctx.target); }
+};
+
+class BreachModule : public Module {
+    Engine& e;
+public:
+    BreachModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "breach"; }
+    std::string help() const override { return "Check for email breaches"; }
+    bool run(Context& ctx) override { return e.run_breach(ctx.target); }
+};
+
 class HistoryModule : public Module {
     Engine& e;
 public:
@@ -162,6 +198,10 @@ void Engine::register_modules() {
     registry_.register_module(std::make_unique<ThreatModule>(*this));
     registry_.register_module(std::make_unique<NmapModule>(*this));
     registry_.register_module(std::make_unique<SearchsploitModule>(*this));
+    registry_.register_module(std::make_unique<TakeoverModule>(*this));
+    registry_.register_module(std::make_unique<FuzzModule>(*this));
+    registry_.register_module(std::make_unique<S3Module>(*this));
+    registry_.register_module(std::make_unique<BreachModule>(*this));
     registry_.register_module(std::make_unique<HistoryModule>(*this));
     registry_.register_module(std::make_unique<GraphModule>(*this));
     registry_.register_module(std::make_unique<ReportModule>(*this));
@@ -402,6 +442,76 @@ bool Engine::run_history(const std::string& target) {
             std::cout << "  (no open ports)";
         }
         std::cout << "\n";
+    }
+    return true;
+}
+
+bool Engine::run_takeover(const std::string& target) {
+    Logger::info("Checking for subdomain takeover: " + target);
+    
+    // If target is a domain, check its subdomains from DB/crt.sh
+    std::vector<std::string> subs;
+    if (target.find('.') != std::string::npos) {
+        DnsResult dr = run_dns_lookup(target);
+        subs = dr.subdomains;
+        if (std::find(subs.begin(), subs.end(), target) == subs.end())
+            subs.push_back(target);
+    } else {
+        subs.push_back(target);
+    }
+
+    int found = 0;
+    for (const auto& sub : subs) {
+        TakeoverResult tr = check_subdomain_takeover(sub);
+        if (tr.vulnerable) {
+            Logger::result("\033[31;1m[VULNERABLE]\033[0m " + sub + " -> " + tr.cname + " (" + tr.provider + ")");
+            found++;
+        }
+    }
+
+    if (found == 0) {
+        Logger::info("No takeover vulnerabilities found for " + std::to_string(subs.size()) + " subdomains.");
+    } else {
+        Logger::success("Found " + std::to_string(found) + " potential takeover(s)!");
+    }
+    return true;
+}
+
+bool Engine::run_fuzz(const std::string& target) {
+    auto results = start_web_fuzz(target);
+    if (results.empty()) {
+        Logger::info("No interesting files found during fuzzing.");
+    } else {
+        Logger::success("Fuzzing results for " + target + ":");
+        for (const auto& r : results) {
+            std::string color = (r.status_code == 200) ? "\033[32m" : "\033[33m";
+            std::cout << "  - " << color << r.status_code << "\033[0m  " 
+                      << std::setw(10) << r.length << " bytes  " << r.url << "\n";
+        }
+    }
+    return true;
+}
+
+bool Engine::run_s3(const std::string& target) {
+    auto results = start_s3_enum(target);
+    if (results.empty()) {
+        Logger::info("No S3 buckets found for " + target);
+    } else {
+        Logger::success("Discovered S3 buckets:");
+        for (const auto& r : results) {
+            std::string status = r.public_read ? "\033[31;1m[PUBLIC]\033[0m" : "\033[32m[PRIVATE]\033[0m";
+            std::cout << "  - " << status << " " << r.bucket_name << ".s3.amazonaws.com\n";
+        }
+    }
+    return true;
+}
+
+bool Engine::run_breach(const std::string& target) {
+    // Check if the target itself is an email
+    if (target.find('@') != std::string::npos) {
+        ThreatIntel::query_breaches(target);
+    } else {
+        Logger::info("Target is not an email. To check breaches, use a specific email address.");
     }
     return true;
 }

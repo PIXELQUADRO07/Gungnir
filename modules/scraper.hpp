@@ -16,6 +16,20 @@ struct ScrapeResult {
     bool success = false;
 };
 
+struct FuzzResult {
+    std::string url;
+    int status_code;
+    size_t length;
+};
+
+struct S3Result {
+    std::string bucket_name;
+    bool exists = false;
+    bool public_read = false;
+};
+
 ScrapeResult start_web_scrape(const std::string& target);
+std::vector<FuzzResult> start_web_fuzz(const std::string& target);
+std::vector<S3Result> start_s3_enum(const std::string& target);
 
 #endif

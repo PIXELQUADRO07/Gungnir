@@ -85,3 +85,11 @@ ThreatIntelResult ThreatIntel::query_shodan(const std::string& ip, const std::st
 
     return res;
 }
+
+std::vector<BreachResult> ThreatIntel::query_breaches(const std::string& target) {
+    std::vector<BreachResult> results;
+    // Note: A real HIBP check requires an API key and per-email requests.
+    // For now, this is a placeholder that demonstrates the module integration.
+    Logger::info("Breach checking for: " + target);
+    return results;
+}
