@@ -31,6 +31,8 @@ static void show_usage() {
         "    threat   <target>\n"
         "    history  [target]\n"
         "    graph    [-o file]\n"
+        "    nmap     <target> [-p ports] [-o file]\n"
+        "    searchsploit <query> [-o file]\n"
         "\n"
         "  Flags:\n"
         "    -p <ports>       Comma-separated TCP ports (e.g. 22,80,443)\n"
@@ -77,6 +79,8 @@ static const std::map<std::string, CmdInfo> COMMANDS = {
     {"threat",   {false, true }},
     {"history",  {false, false}},   // target optional
     {"graph",    {false, false}},   // target unused
+    {"nmap",     {true,  true }},
+    {"searchsploit", {false, true }},
 };
 
 // ─── legacy flag parsing ──────────────────────────────────────────────────────

@@ -110,6 +110,28 @@ Shell::Shell() {
             return true;
         });
 
+    // nmap
+    register_command("nmap", /*ports_ok=*/true,
+        "nmap     <target> [-p ports] [-o file]       Run nmap with service detection",
+        [this](const std::vector<std::string>& args) -> bool {
+            const auto pa = parse_args(args, 1, true);
+            if (pa.target.empty()) { Logger::warn("Usage: nmap <target> [-p ports] [-o file]"); return true; }
+            engine_.execute("nmap", pa.target, pa.output_file, pa.ports);
+            return true;
+        });
+
+    // searchsploit
+    register_command("searchsploit", /*ports_ok=*/false,
+        "searchsploit <query> [-o file]               Search ExploitDB for exploits",
+        [this](const std::vector<std::string>& args) -> bool {
+            if (args.size() < 2) { Logger::warn("Usage: searchsploit <query> [-o file]"); return true; }
+            // Join all non-flag tokens as the query
+            const auto pa = parse_args(args, 1, false);
+            std::string query = pa.target;
+            engine_.execute("searchsploit", query, pa.output_file, {});
+            return true;
+        });
+
     // use — set active module; list derived from registered recon commands
     register_command("use", /*ports_ok=*/false,
         "use <module>                         Set active module",
@@ -198,7 +220,7 @@ void Shell::register_command(
         help_lines_.push_back("  " + help_line);
 
     // track recon modules (those with actual targets)
-    const std::set<std::string> recon = {"scan","dns","whois","scrape","campaign","threat","history"};
+    const std::set<std::string> recon = {"scan","dns","whois","scrape","campaign","threat","history","nmap","searchsploit"};
     if (recon.count(name))
         recon_modules_[name] = ports_ok;
 }

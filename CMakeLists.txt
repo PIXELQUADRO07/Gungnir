@@ -18,8 +18,14 @@ set(SOURCES
     modules/scraper.cpp
     modules/network/network.cpp
     modules/network/http_client.cpp
-    modules/recon/recon.cpp
-    modules/recon/threat_intel.cpp
+    modules/recon
+    modules/nmap
+    modules/searchsploit/recon.cpp
+    modules/recon
+    modules/nmap
+    modules/searchsploit/threat_intel.cpp
+    modules/nmap/nmap.cpp
+    modules/searchsploit/searchsploit.cpp
     utils/logger.cpp
 )
 
@@ -30,6 +36,8 @@ target_include_directories(Gungnir PRIVATE
     modules
     modules/network
     modules/recon
+    modules/nmap
+    modules/searchsploit
     utils
     vendor
 )

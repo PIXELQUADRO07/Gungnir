@@ -13,6 +13,8 @@
 #include "recon.hpp"
 #include "logger.hpp"
 #include "database.hpp"
+#include "nmap.hpp"
+#include "searchsploit.hpp"
 #include "../vendor/json.hpp"
 
 using json = nlohmann::json;
@@ -113,6 +115,15 @@ private:
     // ── utilities ─────────────────────────────────────────────────────────────
     std::vector<int> default_scan_ports() const;
     bool             is_ip_address(const std::string& target) const;
+
+    // ── nmap & searchsploit ──────────────────────────────────────────────────
+    bool run_nmap        (const std::string& target, const std::string& output_file, const std::vector<int>& ports);
+    bool run_searchsploit(const std::string& query,  const std::string& output_file);
+    void print_nmap_result        (const NmapResult&        result) const;
+    void print_searchsploit_result(const SearchsploitResult& result) const;
+    bool dump_nmap_result        (const NmapResult&        result, const std::string& path) const;
+    bool dump_searchsploit_result(const SearchsploitResult& result, const std::string& path) const;
 };
 
 #endif
+// (nmap and searchsploit are included via engine.cpp — not needed in header)

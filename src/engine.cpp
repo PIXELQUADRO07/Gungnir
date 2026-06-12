@@ -2,11 +2,14 @@
 #include "logger.hpp"
 #include "config.hpp"
 #include "threat_intel.hpp"
+#include "nmap.hpp"
+#include "searchsploit.hpp"
 
 #include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 
 // ─── constructor ──────────────────────────────────────────────────────────────
@@ -58,6 +61,18 @@ void Engine::register_executors() {
                                  const std::vector<int>&) -> bool {
         print_threat_result(target);
         return true;
+    };
+
+    executors["nmap"] = [this](const std::string& target,
+                               const std::string& output_file,
+                               const std::vector<int>& ports) -> bool {
+        return run_nmap(target, output_file, ports);
+    };
+
+    executors["searchsploit"] = [this](const std::string& query,
+                                       const std::string& output_file,
+                                       const std::vector<int>&) -> bool {
+        return run_searchsploit(query, output_file);
     };
 
     // history: target is optional (empty = show all)
@@ -466,4 +481,204 @@ bool Engine::is_ip_address(const std::string& target) const {
         if (!isdigit(static_cast<unsigned char>(c))) return false;
     }
     return has_dot;
+}
+
+// ─── nmap executor ────────────────────────────────────────────────────────────
+
+bool Engine::run_nmap(
+    const std::string& target,
+    const std::string& output_file,
+    const std::vector<int>& ports
+) {
+    const NmapResult result = nmap_scan(target, {}, ports);
+    if (!result.error.empty()) {
+        Logger::error(result.error);
+        return false;
+    }
+    print_nmap_result(result);
+    if (!output_file.empty()) return dump_nmap_result(result, output_file);
+    return result.success;
+}
+
+void Engine::print_nmap_result(const NmapResult& result) const {
+    if (result.hosts.empty()) {
+        Logger::info("No hosts responded.");
+        return;
+    }
+
+    // ANSI colours
+    const char* RESET  = "\033[0m";
+    const char* GREEN  = "\033[32m";
+    const char* CYAN   = "\033[36m";
+    const char* YELLOW = "\033[33m";
+    const char* BOLD   = "\033[1m";
+    const char* DIM    = "\033[2m";
+
+    for (const auto& host : result.hosts) {
+        std::cout << "\n"
+                  << BOLD << "  Host:  " << RESET << GREEN << host.ip << RESET;
+        if (!host.hostname.empty() && host.hostname != host.ip)
+            std::cout << "  " << DIM << "(" << host.hostname << ")" << RESET;
+        std::cout << "\n";
+
+        if (!host.os_guess.empty())
+            std::cout << BOLD << "  OS:    " << RESET << host.os_guess << "\n";
+
+        if (host.ports.empty()) {
+            std::cout << DIM << "  (no open ports detected)\n" << RESET;
+            continue;
+        }
+
+        // Header
+        std::cout << "\n"
+                  << BOLD
+                  << "  " << std::left
+                  << std::setw(8)  << "PORT"
+                  << std::setw(10) << "PROTO"
+                  << std::setw(12) << "STATE"
+                  << std::setw(16) << "SERVICE"
+                  << "VERSION"
+                  << RESET << "\n"
+                  << "  " << std::string(70, '-') << "\n";
+
+        for (const auto& p : host.ports) {
+            // Colour by state
+            const char* state_col =
+                (p.state == "open")     ? GREEN  :
+                (p.state == "filtered") ? YELLOW : DIM;
+
+            std::cout
+                << "  "
+                << CYAN  << std::left << std::setw(8)  << p.port   << RESET
+                << DIM   << std::left << std::setw(10) << p.protocol << RESET
+                << state_col << std::left << std::setw(12) << p.state << RESET
+                << std::left << std::setw(16) << p.service
+                << DIM << p.version << RESET
+                << "\n";
+        }
+    }
+    std::cout << "\n";
+}
+
+bool Engine::dump_nmap_result(const NmapResult& result, const std::string& path) const {
+    std::ofstream out(path);
+    if (!out) { Logger::error("Cannot open file for writing: " + path); return false; }
+
+    json j;
+    json hosts_arr = json::array();
+    for (const auto& host : result.hosts) {
+        json h;
+        h["ip"]       = host.ip;
+        h["hostname"] = host.hostname;
+        h["os"]       = host.os_guess;
+        json ports_arr = json::array();
+        for (const auto& p : host.ports) {
+            json pe;
+            pe["port"]     = p.port;
+            pe["protocol"] = p.protocol;
+            pe["state"]    = p.state;
+            pe["service"]  = p.service;
+            pe["version"]  = p.version;
+            ports_arr.push_back(pe);
+        }
+        h["ports"] = ports_arr;
+        hosts_arr.push_back(h);
+    }
+    j["hosts"] = hosts_arr;
+
+    out << j.dump(2) << "\n";
+    Logger::success("nmap result saved to " + path);
+    return true;
+}
+
+// ─── searchsploit executor ────────────────────────────────────────────────────
+
+bool Engine::run_searchsploit(
+    const std::string& query,
+    const std::string& output_file
+) {
+    const SearchsploitResult result = searchsploit_query(query);
+    if (!result.error.empty() && result.exploits.empty()) {
+        Logger::error(result.error);
+        return false;
+    }
+    print_searchsploit_result(result);
+    if (!output_file.empty()) return dump_searchsploit_result(result, output_file);
+    return result.success;
+}
+
+void Engine::print_searchsploit_result(const SearchsploitResult& result) const {
+    if (result.exploits.empty()) {
+        Logger::info("No exploits found for: " + result.query);
+        return;
+    }
+
+    const char* RESET  = "\033[0m";
+    const char* GREEN  = "\033[32m";
+    const char* CYAN   = "\033[36m";
+    const char* YELLOW = "\033[33m";
+    const char* RED    = "\033[31m";
+    const char* BOLD   = "\033[1m";
+    const char* DIM    = "\033[2m";
+
+    Logger::success("Found " + std::to_string(result.exploits.size()) +
+                    " exploit(s) for: " + result.query);
+
+    // Header
+    std::cout << "\n"
+              << BOLD
+              << "  " << std::left
+              << std::setw(55) << "TITLE"
+              << std::setw(12) << "TYPE"
+              << std::setw(12) << "PLATFORM"
+              << "PATH"
+              << RESET << "\n"
+              << "  " << std::string(100, '-') << "\n";
+
+    for (const auto& ex : result.exploits) {
+        // Colour by type
+        const char* type_col =
+            (ex.type == "remote")   ? RED    :
+            (ex.type == "local")    ? YELLOW :
+            (ex.type == "webapps")  ? CYAN   :
+            (ex.type == "dos")      ? YELLOW : DIM;
+
+        // Truncate long titles
+        std::string title = ex.title;
+        if (title.size() > 52) title = title.substr(0, 49) + "...";
+
+        std::cout
+            << "  "
+            << GREEN << std::left << std::setw(55) << title << RESET
+            << type_col << std::left << std::setw(12) << ex.type << RESET
+            << DIM << std::left << std::setw(12) << ex.platform << RESET
+            << DIM << ex.path << RESET
+            << "\n";
+    }
+    std::cout << "\n";
+}
+
+bool Engine::dump_searchsploit_result(
+    const SearchsploitResult& result,
+    const std::string& path
+) const {
+    std::ofstream out(path);
+    if (!out) { Logger::error("Cannot open file for writing: " + path); return false; }
+
+    json j;
+    j["query"] = result.query;
+    json arr = json::array();
+    for (const auto& ex : result.exploits) {
+        json e;
+        e["title"]    = ex.title;
+        e["type"]     = ex.type;
+        e["platform"] = ex.platform;
+        e["path"]     = ex.path;
+        arr.push_back(e);
+    }
+    j["exploits"] = arr;
+
+    out << j.dump(2) << "\n";
+    Logger::success("searchsploit result saved to " + path);
+    return true;
 }
