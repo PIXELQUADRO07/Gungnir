@@ -171,22 +171,44 @@ void Engine::register_modules() {
 
 bool Engine::execute(
     const std::string& mode,
-    const std::string& target,
+    const std::vector<std::string>& targets,
     const std::string& output_file,
     const std::vector<int>& ports
 ) {
-    Context ctx {
-        target,
-        ports,
-        output_file,
-        db(),
-        Config::instance()
-    };
-    if (!registry_.execute(mode, ctx)) {
-        Logger::error("Unsupported mode or execution failed: " + mode);
-        return false;
+    if (targets.empty()) {
+        // Some commands don't need a target (like history or graph)
+        Context ctx {
+            "",
+            ports,
+            output_file,
+            db(),
+            Config::instance()
+        };
+        return registry_.execute(mode, ctx);
     }
-    return true;
+
+    bool all_ok = true;
+    for (const auto& target : targets) {
+        if (targets.size() > 1) {
+            Logger::info("--------------------------------------------------");
+            Logger::info("Processing target: " + target);
+            Logger::info("--------------------------------------------------");
+        }
+
+        Context ctx {
+            target,
+            ports,
+            output_file,
+            db(),
+            Config::instance()
+        };
+        
+        if (!registry_.execute(mode, ctx)) {
+            Logger::error("Execution failed for target: " + target);
+            all_ok = false;
+        }
+    }
+    return all_ok;
 }
 
 // ─── runners ──────────────────────────────────────────────────────────────────
@@ -223,13 +245,36 @@ bool Engine::run_scrape(const std::string& target) {
 
     Logger::success("Scrape results for " + target);
     if (!res.title.empty())
-        std::cout << "  - Title:  " << res.title << "\n";
+        std::cout << "  - Title:   " << res.title << "\n";
     if (!res.server_header.empty())
-        std::cout << "  - Server: " << res.server_header << "\n";
+        std::cout << "  - Server:  " << res.server_header << "\n";
+    if (!res.cms.empty())
+        std::cout << "  - CMS:     " << res.cms << "\n";
+    
     if (!res.emails.empty()) {
         std::cout << "  - Emails found:\n";
         for (const auto& email : res.emails)
             std::cout << "      " << email << "\n";
+    }
+    if (!res.social_links.empty()) {
+        std::cout << "  - Social links:\n";
+        for (const auto& link : res.social_links)
+            std::cout << "      " << link << "\n";
+    }
+    if (!res.phone_numbers.empty()) {
+        std::cout << "  - Phone numbers:\n";
+        for (const auto& phone : res.phone_numbers)
+            std::cout << "      " << phone << "\n";
+    }
+    if (!res.robots_entries.empty()) {
+        std::cout << "  - robots.txt entries:\n";
+        for (const auto& entry : res.robots_entries)
+            std::cout << "      " << entry << "\n";
+    }
+    if (!res.historical_urls.empty()) {
+        std::cout << "  - Historical URLs (Wayback Machine):\n";
+        for (const auto& url : res.historical_urls)
+            std::cout << "      " << url << "\n";
     }
     return true;
 }

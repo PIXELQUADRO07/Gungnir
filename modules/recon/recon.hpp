@@ -37,6 +37,12 @@ DnsResult run_dns_lookup(const std::string& target);
 // Performs a brute-force subdomain enumeration using a built-in wordlist.
 std::vector<std::string> run_dns_subdomain_enum(const std::string& target);
 
+// Performs passive subdomain enumeration via crt.sh (Certificate Transparency logs).
+std::vector<std::string> run_passive_subdomain_enum(const std::string& target);
+
+// Performs a reverse DNS lookup (PTR record) for the given IP address.
+std::string run_reverse_dns(const std::string& ip);
+
 // Performs a WHOIS query, following referrals to authoritative servers
 // when possible (e.g. iana.org -> registry-specific server).
 WhoisResult run_whois_lookup(const std::string& target);

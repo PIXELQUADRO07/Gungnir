@@ -72,11 +72,11 @@ Shell::Shell() {
             padded_name + "<target> ... " + help,
             [this, name, ports](const std::vector<std::string>& args) -> bool {
                 const auto pa = parse_args(args, 1, ports);
-                if (pa.target.empty() && name != "history" && name != "graph") {
+                if (pa.targets.empty() && name != "history" && name != "graph") {
                     Logger::warn("Usage: " + name + " <target> [flags]");
                     return true;
                 }
-                engine_.execute(name, pa.target, pa.output_file, pa.ports);
+                engine_.execute(name, pa.targets, pa.output_file, pa.ports);
                 return true;
             });
     }
@@ -112,11 +112,11 @@ Shell::Shell() {
             const bool ports_ok = recon_modules_.count(current_context_) &&
                                   recon_modules_.at(current_context_);
             const auto pa = parse_args(args, 1, ports_ok);
-            if (pa.target.empty()) {
+            if (pa.targets.empty()) {
                 Logger::warn("Usage: run <target>");
                 return true;
             }
-            engine_.execute(current_context_, pa.target, pa.output_file, pa.ports);
+            engine_.execute(current_context_, pa.targets, pa.output_file, pa.ports);
             return true;
         });
 

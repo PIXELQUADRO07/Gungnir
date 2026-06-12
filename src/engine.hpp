@@ -79,7 +79,7 @@ public:
 
     bool execute(
         const std::string& mode,
-        const std::string& target,
+        const std::vector<std::string>& targets,
         const std::string& output_file = {},
         const std::vector<int>& ports  = {}
     );

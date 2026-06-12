@@ -7,7 +7,12 @@
 struct ScrapeResult {
     std::string title;
     std::string server_header;
+    std::string cms;
     std::vector<std::string> emails;
+    std::vector<std::string> social_links;
+    std::vector<std::string> phone_numbers;
+    std::vector<std::string> robots_entries;
+    std::vector<std::string> historical_urls;
     bool success = false;
 };
 

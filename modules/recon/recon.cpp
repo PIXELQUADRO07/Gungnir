@@ -1,5 +1,8 @@
 #include "recon.hpp"
 #include "logger.hpp"
+#include "http_client.hpp"
+#include "json.hpp"
+#include <set>
 
 #include <arpa/inet.h>
 #include <arpa/nameser.h>
@@ -248,6 +251,27 @@ DnsResult run_dns_lookup(const std::string& target) {
     DnsResult result;
     result.target = target;
 
+    // Check if target is an IP (v4 or v6)
+    struct sockaddr_in sa;
+    struct sockaddr_in6 sa6;
+    bool is_ip = (inet_pton(AF_INET, target.c_str(), &(sa.sin_addr)) == 1 ||
+                  inet_pton(AF_INET6, target.c_str(), &(sa6.sin6_addr)) == 1);
+
+    if (is_ip) {
+        Logger::info("Target is an IP address. Performing Reverse DNS lookup...");
+        std::string hostname = run_reverse_dns(target);
+        if (!hostname.empty()) {
+            DnsRecord rec;
+            rec.type = "PTR";
+            rec.value = hostname;
+            result.records.push_back(rec);
+            result.success = true;
+        } else {
+            Logger::warn("No Reverse DNS record found for " + target);
+        }
+        return result;
+    }
+
     if (res_init() != 0) {
         Logger::error("Unable to initialize DNS resolver");
         return result;
@@ -271,7 +295,14 @@ DnsResult run_dns_lookup(const std::string& target) {
         Logger::warn("No DNS records found for " + target);
     }
 
-    result.subdomains = run_dns_subdomain_enum(target);
+    // Combine brute-force and passive subdomain enumeration
+    auto brute_subs = run_dns_subdomain_enum(target);
+    auto passive_subs = run_passive_subdomain_enum(target);
+
+    std::set<std::string> all_subs(brute_subs.begin(), brute_subs.end());
+    for (const auto& s : passive_subs) all_subs.insert(s);
+
+    result.subdomains.assign(all_subs.begin(), all_subs.end());
 
     return result;
 }
@@ -317,6 +348,76 @@ std::vector<std::string> run_dns_subdomain_enum(const std::string& target) {
 
     std::sort(found.begin(), found.end());
     return found;
+}
+
+std::vector<std::string> run_passive_subdomain_enum(const std::string& target) {
+    std::vector<std::string> subdomains;
+    std::set<std::string> unique_subs;
+
+    // crt.sh query for JSON output
+    const std::string url = "https://crt.sh/?q=%25." + target + "&output=json";
+    
+    Logger::info("Enumerazione passiva subdomains (crt.sh) per: " + target);
+    HttpResponse resp = HttpClient::get(url, {}, 20); // Longer timeout for crt.sh
+
+    if (resp.status_code == 200) {
+        try {
+            auto j = nlohmann::json::parse(resp.body);
+            for (const auto& item : j) {
+                if (item.contains("common_name")) {
+                    std::string cn = item["common_name"].get<std::string>();
+                    std::stringstream ss(cn);
+                    std::string segment;
+                    while (std::getline(ss, segment, '\n')) {
+                        if (segment.substr(0, 2) == "*.") segment = segment.substr(2);
+                        if (segment.find(target) != std::string::npos && segment != target) 
+                            unique_subs.insert(segment);
+                    }
+                }
+                if (item.contains("name_value")) {
+                    std::string nv = item["name_value"].get<std::string>();
+                    std::stringstream ss(nv);
+                    std::string segment;
+                    while (std::getline(ss, segment, '\n')) {
+                        if (segment.substr(0, 2) == "*.") segment = segment.substr(2);
+                        if (segment.find(target) != std::string::npos && segment != target) 
+                            unique_subs.insert(segment);
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            Logger::warn("crt.sh: parsing fallito — " + std::string(e.what()));
+        }
+    } else {
+        Logger::error("crt.sh ha risposto con codice: " + std::to_string(resp.status_code));
+    }
+
+    for (const auto& sub : unique_subs) {
+        subdomains.push_back(sub);
+    }
+    
+    std::sort(subdomains.begin(), subdomains.end());
+    return subdomains;
+}
+
+std::string run_reverse_dns(const std::string& ip) {
+    struct sockaddr_in sa;
+    struct sockaddr_in6 sa6;
+    char host[NI_MAXHOST];
+
+    if (inet_pton(AF_INET, ip.c_str(), &sa.sin_addr) == 1) {
+        sa.sin_family = AF_INET;
+        if (getnameinfo((struct sockaddr*)&sa, sizeof(sa), host, sizeof(host), nullptr, 0, NI_NAMEREQD) == 0) {
+            return std::string(host);
+        }
+    } else if (inet_pton(AF_INET6, ip.c_str(), &sa6.sin6_addr) == 1) {
+        sa6.sin6_family = AF_INET6;
+        if (getnameinfo((struct sockaddr*)&sa6, sizeof(sa6), host, sizeof(host), nullptr, 0, NI_NAMEREQD) == 0) {
+            return std::string(host);
+        }
+    }
+
+    return "";
 }
 
 WhoisResult run_whois_lookup(const std::string& target) {

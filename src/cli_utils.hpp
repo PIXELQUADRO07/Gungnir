@@ -64,14 +64,30 @@ inline std::vector<std::string> tokenize(const std::string& line) {
     return tokens;
 }
 
+// ─── parse_targets ────────────────────────────────────────────────────────────
+// Splits a comma-separated target string (e.g. "a.com,b.com") into a vector.
+
+inline std::vector<std::string> parse_targets(const std::string& arg) {
+    std::vector<std::string> results;
+    std::istringstream ss(arg);
+    std::string t;
+    while (std::getline(ss, t, ',')) {
+        const auto b = t.find_first_not_of(" \t");
+        const auto e = t.find_last_not_of(" \t");
+        if (b != std::string::npos)
+            results.push_back(t.substr(b, e - b + 1));
+    }
+    return results;
+}
+
 // ─── parse_args ───────────────────────────────────────────────────────────────
 // Scans tokens[from..] for -p and -o flags.
-// The target is the first non-flag token. Warns on unknown flags.
+// The target is the first non-flag token (can be comma-separated).
 
 struct ParsedArgs {
-    std::string      target;
-    std::vector<int> ports;
-    std::string      output_file;
+    std::vector<std::string> targets;
+    std::vector<int>         ports;
+    std::string              output_file;
 };
 
 inline ParsedArgs parse_args(
@@ -109,8 +125,8 @@ inline ParsedArgs parse_args(
         } else if (!t.empty() && t[0] == '-') {
             Logger::warn("Unknown flag ignored: " + t + ". Type 'help' for the list.");
 
-        } else if (result.target.empty()) {
-            result.target = t;
+        } else if (result.targets.empty()) {
+            result.targets = parse_targets(t);
 
         } else {
             Logger::warn("Extra argument ignored: " + t);
@@ -118,3 +134,4 @@ inline ParsedArgs parse_args(
     }
     return result;
 }
+

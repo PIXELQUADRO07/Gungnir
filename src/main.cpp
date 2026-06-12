@@ -167,15 +167,15 @@ int main(int argc, char* argv[]) {
         for (int i = 2; i < argc; ++i) tokens.emplace_back(argv[i]);
         const ParsedArgs pa = parse_args(tokens, 0, ci.ports_ok);
 
-        if (ci.needs_target && pa.target.empty()) {
+        if (ci.needs_target && pa.targets.empty()) {
             Logger::error("Target required.  Usage: ./Gungnir " + first + " <target>");
             return 1;
         }
 
         Engine engine;
-        // For commands without a target (history, graph) pass empty string —
+        // For commands without a target (history, graph) pa.targets is empty —
         // engine executors handle that cleanly.
-        return engine.execute(first, pa.target, pa.output_file, pa.ports) ? 0 : 1;
+        return engine.execute(first, pa.targets, pa.output_file, pa.ports) ? 0 : 1;
     }
 
     // ── legacy flag style: ./Gungnir -t example.com -m scan [...] ─────────────
@@ -183,7 +183,7 @@ int main(int argc, char* argv[]) {
         const LegacyArgs la = parse_legacy(argc, argv);
         if (!la.valid) { show_usage(); return 1; }
         Engine engine;
-        return engine.execute(la.mode, la.target, la.output_file, la.ports) ? 0 : 1;
+        return engine.execute(la.mode, parse_targets(la.target), la.output_file, la.ports) ? 0 : 1;
     }
 
     // ── nothing matched ───────────────────────────────────────────────────────
