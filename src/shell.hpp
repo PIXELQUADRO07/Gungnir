@@ -32,4 +32,5 @@ private:
     std::map<std::string, bool> recon_modules_;   // name → ports_supported
     std::vector<std::string> help_lines_;          // ordered, for display
     std::string current_context_;
+    std::string current_workspace_;
 };

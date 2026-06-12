@@ -12,83 +12,149 @@
 #include <iomanip>
 #include <sstream>
 
+// ─── modules ──────────────────────────────────────────────────────────────────
+
+class ScanModule : public Module {
+    Engine& e;
+public:
+    ScanModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "scan"; }
+    std::string help() const override { return "TCP port scan"; }
+    bool supports_ports() const override { return true; }
+    bool run(Context& ctx) override {
+        const ScanResult res = e.run_scan(ctx.target, ctx.ports);
+        e.print_scan_result(res);
+        if (!ctx.output_file.empty()) e.dump_scan_result(res, ctx.output_file);
+        return true;
+    }
+};
+
+class DnsModule : public Module {
+    Engine& e;
+public:
+    DnsModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "dns"; }
+    std::string help() const override { return "DNS lookup"; }
+    bool run(Context& ctx) override { return e.run_dns(ctx.target, ctx.output_file); }
+};
+
+class WhoisModule : public Module {
+    Engine& e;
+public:
+    WhoisModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "whois"; }
+    std::string help() const override { return "WHOIS lookup"; }
+    bool run(Context& ctx) override { return e.run_whois(ctx.target, ctx.output_file); }
+};
+
+class ScrapeModule : public Module {
+    Engine& e;
+public:
+    ScrapeModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "scrape"; }
+    std::string help() const override { return "OSINT scraping"; }
+    bool run(Context& ctx) override { return e.run_scrape(ctx.target); }
+};
+
+class CampaignModule : public Module {
+    Engine& e;
+public:
+    CampaignModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "campaign"; }
+    std::string help() const override { return "Full OSINT campaign"; }
+    bool supports_ports() const override { return true; }
+    bool run(Context& ctx) override { return e.run_campaign(ctx.target, ctx.ports); }
+};
+
+class ThreatModule : public Module {
+    Engine& e;
+public:
+    ThreatModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "threat"; }
+    std::string help() const override { return "Threat intelligence (VT/Shodan)"; }
+    bool run(Context& ctx) override { e.print_threat_result(ctx.target); return true; }
+};
+
+class NmapModule : public Module {
+    Engine& e;
+public:
+    NmapModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "nmap"; }
+    std::string help() const override { return "Nmap service detection"; }
+    bool supports_ports() const override { return true; }
+    bool run(Context& ctx) override { return e.run_nmap(ctx.target, ctx.output_file, ctx.ports); }
+};
+
+class SearchsploitModule : public Module {
+    Engine& e;
+public:
+    SearchsploitModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "searchsploit"; }
+    std::string help() const override { return "Search exploits"; }
+    bool run(Context& ctx) override { return e.run_searchsploit(ctx.target, ctx.output_file); }
+};
+
+class HistoryModule : public Module {
+    Engine& e;
+public:
+    HistoryModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "history"; }
+    std::string help() const override { return "Scan history"; }
+    bool run(Context& ctx) override { return e.run_history(ctx.target); }
+};
+
+class GraphModule : public Module {
+    Engine& e;
+public:
+    GraphModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "graph"; }
+    std::string help() const override { return "Export graph"; }
+    bool run(Context& ctx) override {
+        const std::string out = ctx.output_file.empty() ? "graph.json" : ctx.output_file;
+        return ctx.db.export_graph_json(out);
+    }
+};
+
+class ReportModule : public Module {
+    Engine& e;
+public:
+    ReportModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "report"; }
+    std::string help() const override { return "Generate HTML/JSON reports"; }
+    bool run(Context& ctx) override {
+        std::string fmt = "html";
+        if (!ctx.output_file.empty()) {
+            if (ctx.output_file.find(".json") != std::string::npos) fmt = "json";
+        }
+        
+        Logger::info("Generating " + fmt + " report...");
+        // Qui andrebbe la logica di query + template
+        Logger::success("Report generated (simulated)");
+        return true;
+    }
+};
+
 // ─── constructor ──────────────────────────────────────────────────────────────
 
 Engine::Engine() {
-    db.init();
-    register_executors();
+    workspace_ = Workspace::load_default();
+    register_modules();
 }
 
-// ─── executor registry ────────────────────────────────────────────────────────
+// ─── module registration ──────────────────────────────────────────────────────
 
-void Engine::register_executors() {
-
-    executors["scan"] = [this](const std::string& target,
-                               const std::string& output_file,
-                               const std::vector<int>& ports) -> bool {
-        const ScanResult res = run_scan(target, ports);
-        print_scan_result(res);
-        if (!output_file.empty()) dump_scan_result(res, output_file);
-        return true;
-    };
-
-    executors["dns"] = [this](const std::string& target,
-                              const std::string& output_file,
-                              const std::vector<int>&) -> bool {
-        return run_dns(target, output_file);
-    };
-
-    executors["whois"] = [this](const std::string& target,
-                                const std::string& output_file,
-                                const std::vector<int>&) -> bool {
-        return run_whois(target, output_file);
-    };
-
-    executors["scrape"] = [this](const std::string& target,
-                                 const std::string&,
-                                 const std::vector<int>&) -> bool {
-        return run_scrape(target);
-    };
-
-    executors["campaign"] = [this](const std::string& target,
-                                   const std::string&,
-                                   const std::vector<int>& ports) -> bool {
-        return run_campaign(target, ports);
-    };
-
-    executors["threat"] = [this](const std::string& target,
-                                 const std::string&,
-                                 const std::vector<int>&) -> bool {
-        print_threat_result(target);
-        return true;
-    };
-
-    executors["nmap"] = [this](const std::string& target,
-                               const std::string& output_file,
-                               const std::vector<int>& ports) -> bool {
-        return run_nmap(target, output_file, ports);
-    };
-
-    executors["searchsploit"] = [this](const std::string& query,
-                                       const std::string& output_file,
-                                       const std::vector<int>&) -> bool {
-        return run_searchsploit(query, output_file);
-    };
-
-    // history: target is optional (empty = show all)
-    executors["history"] = [this](const std::string& target,
-                                  const std::string&,
-                                  const std::vector<int>&) -> bool {
-        return run_history(target);
-    };
-
-    // graph: target is unused
-    executors["graph"] = [this](const std::string&,
-                                const std::string& output_file,
-                                const std::vector<int>&) -> bool {
-        const std::string out = output_file.empty() ? "graph.json" : output_file;
-        return db.export_graph_json(out);
-    };
+void Engine::register_modules() {
+    registry_.register_module(std::make_unique<ScanModule>(*this));
+    registry_.register_module(std::make_unique<DnsModule>(*this));
+    registry_.register_module(std::make_unique<WhoisModule>(*this));
+    registry_.register_module(std::make_unique<ScrapeModule>(*this));
+    registry_.register_module(std::make_unique<CampaignModule>(*this));
+    registry_.register_module(std::make_unique<ThreatModule>(*this));
+    registry_.register_module(std::make_unique<NmapModule>(*this));
+    registry_.register_module(std::make_unique<SearchsploitModule>(*this));
+    registry_.register_module(std::make_unique<HistoryModule>(*this));
+    registry_.register_module(std::make_unique<GraphModule>(*this));
+    registry_.register_module(std::make_unique<ReportModule>(*this));
 }
 
 // ─── dispatch ─────────────────────────────────────────────────────────────────
@@ -99,12 +165,18 @@ bool Engine::execute(
     const std::string& output_file,
     const std::vector<int>& ports
 ) {
-    auto it = executors.find(mode);
-    if (it == executors.end()) {
-        Logger::error("Unsupported mode: " + mode);
+    Context ctx {
+        target,
+        ports,
+        output_file,
+        db(),
+        Config::instance()
+    };
+    if (!registry_.execute(mode, ctx)) {
+        Logger::error("Unsupported mode or execution failed: " + mode);
         return false;
     }
-    return it->second(target, output_file, ports);
+    return true;
 }
 
 // ─── runners ──────────────────────────────────────────────────────────────────
@@ -126,7 +198,7 @@ ScanResult Engine::run_scan(const std::string& target, const std::vector<int>& p
     result.target = target;
     result.ports  = start_native_scan(target, scan_ports, /*timeout_ms=*/1000);
 
-    db.save_scan(target, result.open_port_numbers());
+    db().save_scan(target, result.open_port_numbers());
 
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
@@ -162,7 +234,7 @@ bool Engine::run_campaign(const std::string& target, const std::vector<int>& por
     // Stage 1 — DNS
     Logger::info("[Stage 1/4] DNS enumeration");
     DnsResult dns_res = run_dns_lookup(target);
-    db.save_dns(target, dns_res);
+    db().save_dns(target, dns_res);
     print_dns_result(dns_res);
 
     // Collect all hosts to scan (target + discovered subdomains)
@@ -211,13 +283,26 @@ bool Engine::run_campaign(const std::string& target, const std::vector<int>& por
 }
 
 bool Engine::run_dns(const std::string& target, const std::string& output_file) {
+    // Check cache
+    std::string cached = db().cache_get("dns:" + target);
+    if (!cached.empty()) {
+        Logger::info("DNS cache hit for " + target);
+        // Simplified: we could parse JSON and return DnsResult, 
+        // but for now let's just show it works.
+        // In a real impl, we'd parse and return.
+    }
+
     Logger::info("DNS lookup: " + target);
     const auto t0     = std::chrono::steady_clock::now();
     DnsResult  result = run_dns_lookup(target);
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - t0).count();
 
-    db.save_dns(target, result);
+    db().save_dns(target, result);
+    
+    // Save to cache (1 hour)
+    db().cache_set("dns:" + target, "{\"status\":\"ok\"}", 3600);
+
     Logger::info("DNS lookup completed in " + std::to_string(elapsed) + " ms");
     print_dns_result(result);
     if (!output_file.empty()) return dump_dns_result(result, output_file);
@@ -238,7 +323,7 @@ bool Engine::run_whois(const std::string& target, const std::string& output_file
 }
 
 bool Engine::run_history(const std::string& target) {
-    const auto entries = db.get_history(target);
+    const auto entries = db().get_history(target);
     if (entries.empty()) {
         Logger::info(target.empty()
             ? "No scans in local database."
@@ -495,6 +580,23 @@ bool Engine::run_nmap(
         Logger::error(result.error);
         return false;
     }
+
+    // Save to services table
+    for (const auto& host : result.hosts) {
+        for (const auto& p : host.ports) {
+            if (p.state == "open") {
+                ServiceInfo si;
+                si.port = p.port;
+                si.protocol = p.protocol;
+                si.service = p.service;
+                si.product = p.product;
+                si.version = p.version;
+                si.cpe = p.cpe;
+                db().save_service(host.ip, si);
+            }
+        }
+    }
+
     print_nmap_result(result);
     if (!output_file.empty()) return dump_nmap_result(result, output_file);
     return result.success;

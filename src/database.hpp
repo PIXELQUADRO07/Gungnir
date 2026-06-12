@@ -17,6 +17,16 @@ struct HistoryEntry {
     std::vector<int> ports;
 };
 
+struct ServiceInfo {
+    int port;
+    std::string protocol;
+    std::string service;
+    std::string product;
+    std::string version;
+    std::string banner;
+    std::string cpe;
+};
+
 class Database {
 public:
     Database();  // uses ~/.gungnir/data.db automatically
@@ -31,11 +41,18 @@ public:
     // Save DNS results
     bool save_dns(const std::string& target, const DnsResult& result);
 
+    // Save Service Info
+    bool save_service(const std::string& target, const ServiceInfo& service);
+
     // History
     std::vector<HistoryEntry> get_history(const std::string& target = "");
 
     // Export Graph
     bool export_graph_json(const std::string& output_file);
+
+    // Cache
+    bool cache_set(const std::string& key, const std::string& value, int ttl_seconds);
+    std::string cache_get(const std::string& key);
 
 private:
     sqlite3* db_handle;

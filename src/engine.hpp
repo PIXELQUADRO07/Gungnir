@@ -7,14 +7,17 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
 #include "network.hpp"
 #include "scraper.hpp"
 #include "recon.hpp"
+#include "workspace.hpp"
 #include "logger.hpp"
 #include "database.hpp"
 #include "nmap.hpp"
 #include "searchsploit.hpp"
+#include "module.hpp"
 #include "../vendor/json.hpp"
 
 using json = nlohmann::json;
@@ -81,26 +84,30 @@ public:
         const std::vector<int>& ports  = {}
     );
 
+    void set_workspace(std::unique_ptr<Workspace> ws) { workspace_ = std::move(ws); }
+    Workspace& workspace() { return *workspace_; }
+    Database&  db()        { return workspace_->db(); }
+
+    ModuleRegistry& registry() { return registry_; }
+
 private:
-    using ExecutorFn = std::function<bool(
-        const std::string& target,
-        const std::string& output_file,
-        const std::vector<int>& ports
-    )>;
+    std::unique_ptr<Workspace> workspace_;
+    ModuleRegistry registry_;
 
-    Database db;
-    std::unordered_map<std::string, ExecutorFn> executors;
+    void register_modules();
 
-    void register_executors();
-
-    // ── runners ───────────────────────────────────────────────────────────────
+public:
+    // ── runners (made public for modules) ─────────────────────────────────────
     ScanResult run_scan   (const std::string& target, const std::vector<int>& ports);
     bool       run_scrape (const std::string& target);
     bool       run_campaign(const std::string& target, const std::vector<int>& ports);
     bool       run_dns    (const std::string& target, const std::string& output_file);
     bool       run_whois  (const std::string& target, const std::string& output_file);
     bool       run_history(const std::string& target);
+    bool       run_nmap        (const std::string& target, const std::string& output_file, const std::vector<int>& ports);
+    bool       run_searchsploit(const std::string& query,  const std::string& output_file);
 
+public:
     // ── printers ──────────────────────────────────────────────────────────────
     void print_scan_result  (const ScanResult&  result) const;
     void print_dns_result   (const DnsResult&   result) const;
@@ -112,18 +119,15 @@ private:
     bool dump_dns_result   (const DnsResult&   result, const std::string& output_file) const;
     bool dump_whois_result (const WhoisResult& result, const std::string& output_file) const;
 
-    // ── utilities ─────────────────────────────────────────────────────────────
-    std::vector<int> default_scan_ports() const;
-    bool             is_ip_address(const std::string& target) const;
-
-    // ── nmap & searchsploit ──────────────────────────────────────────────────
-    bool run_nmap        (const std::string& target, const std::string& output_file, const std::vector<int>& ports);
-    bool run_searchsploit(const std::string& query,  const std::string& output_file);
     void print_nmap_result        (const NmapResult&        result) const;
     void print_searchsploit_result(const SearchsploitResult& result) const;
     bool dump_nmap_result        (const NmapResult&        result, const std::string& path) const;
     bool dump_searchsploit_result(const SearchsploitResult& result, const std::string& path) const;
+
+private:
+    // ── utilities ─────────────────────────────────────────────────────────────
+    std::vector<int> default_scan_ports() const;
+    bool             is_ip_address(const std::string& target) const;
 };
 
 #endif
-// (nmap and searchsploit are included via engine.cpp — not needed in header)

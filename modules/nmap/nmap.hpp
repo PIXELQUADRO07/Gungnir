@@ -10,7 +10,9 @@ struct NmapPort {
     std::string protocol;   // "tcp" / "udp"
     std::string state;      // "open" / "filtered" / "closed"
     std::string service;    // e.g. "http", "ssh"
+    std::string product;
     std::string version;    // banner / version string if detected
+    std::string cpe;
 };
 
 struct NmapHost {

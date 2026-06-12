@@ -58,6 +58,23 @@ bool Database::init() {
             value TEXT NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS services (
+            target TEXT NOT NULL,
+            port INTEGER,
+            protocol TEXT,
+            service TEXT,
+            product TEXT,
+            version TEXT,
+            banner TEXT,
+            cpe TEXT,
+            scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(target, port, protocol)
+        );
+        CREATE TABLE IF NOT EXISTS cache (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            expires_at DATETIME
+        );
     )";
 
     char* err_msg = nullptr;
@@ -124,6 +141,34 @@ bool Database::save_dns(const std::string& target, const DnsResult& result) {
     }
 
     return true;
+}
+
+// ─── save_service ─────────────────────────────────────────────────────────────
+
+bool Database::save_service(const std::string& target, const ServiceInfo& s) {
+    if (!db_handle) return false;
+
+    const char* sql = R"(
+        INSERT OR REPLACE INTO services 
+        (target, port, protocol, service, product, version, banner, cpe) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    )";
+
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_handle, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    sqlite3_bind_text(stmt, 1, target.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int (stmt, 2, s.port);
+    sqlite3_bind_text(stmt, 3, s.protocol.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, s.service.c_str(),  -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, s.product.c_str(),  -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 6, s.version.c_str(),  -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 7, s.banner.c_str(),   -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 8, s.cpe.c_str(),      -1, SQLITE_TRANSIENT);
+
+    bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return ok;
 }
 
 // ─── get_history ──────────────────────────────────────────────────────────────
@@ -235,4 +280,40 @@ bool Database::export_graph_json(const std::string& output_file) {
 
     Logger::success("Grafo esportato in: " + output_file);
     return true;
+}
+
+// ─── cache ────────────────────────────────────────────────────────────────────
+
+bool Database::cache_set(const std::string& key, const std::string& value, int ttl_seconds) {
+    if (!db_handle) return false;
+
+    const char* sql = "INSERT OR REPLACE INTO cache (key, value, expires_at) VALUES (?, ?, datetime('now', ?));";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_handle, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+
+    std::string ttl_str = "+" + std::to_string(ttl_seconds) + " seconds";
+    sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, ttl_str.c_str(), -1, SQLITE_TRANSIENT);
+
+    bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+std::string Database::cache_get(const std::string& key) {
+    if (!db_handle) return "";
+
+    const char* sql = "SELECT value FROM cache WHERE key = ? AND expires_at > datetime('now');";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_handle, sql, -1, &stmt, nullptr) != SQLITE_OK) return "";
+
+    sqlite3_bind_text(stmt, 1, key.c_str(), -1, SQLITE_TRANSIENT);
+
+    std::string res;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        res = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    }
+    sqlite3_finalize(stmt);
+    return res;
 }

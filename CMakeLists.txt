@@ -15,6 +15,7 @@ set(SOURCES
     src/updater.cpp
     src/database.cpp
     src/config.cpp
+    src/workspace.cpp
     modules/scraper.cpp
     modules/network/network.cpp
     modules/network/http_client.cpp

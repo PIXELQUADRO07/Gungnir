@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <set>
+#include <dirent.h>
 
 #ifdef USE_READLINE
   #include <readline/history.h>
@@ -13,128 +14,76 @@
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 Shell::Shell() {
-    // scan
-    register_command("scan", /*ports_ok=*/true,
-        "scan <target> [-p ports] [-o file]   TCP port scan",
+    current_workspace_ = "default";
+
+    // shell-only commands
+    register_command("workspace", /*ports_ok=*/false,
+        "workspace <list|create|load> [name]  Gestione workspace",
         [this](const std::vector<std::string>& args) -> bool {
-            const auto pa = parse_args(args, 1, /*ports_supported=*/true);
-            if (pa.target.empty()) {
-                Logger::warn("Usage: scan <target> [-p ports] [-o file]");
+            if (args.size() < 2) {
+                Logger::warn("Usage: workspace <list|create|load> [name]");
                 return true;
             }
-            engine_.execute("scan", pa.target, pa.output_file, pa.ports);
-            return true;
-        });
-
-    // dns
-    register_command("dns", /*ports_ok=*/false,
-        "dns  <target> [-o file]              DNS lookup",
-        [this](const std::vector<std::string>& args) -> bool {
-            const auto pa = parse_args(args, 1, /*ports_supported=*/false);
-            if (pa.target.empty()) {
-                Logger::warn("Usage: dns <target> [-o file]");
-                return true;
+            std::string sub = args[1];
+            if (sub == "list") {
+                std::string path = get_gungnir_data_dir() + "/workspaces";
+                Logger::info("Workspace disponibili:");
+                std::cout << "  - default (implicito)\n";
+                DIR* dir = opendir(path.c_str());
+                if (dir) {
+                    struct dirent* ent;
+                    while ((ent = readdir(dir)) != NULL) {
+                        if (ent->d_type == DT_DIR) {
+                            std::string name = ent->d_name;
+                            if (name != "." && name != "..")
+                                std::cout << "  - " << name << "\n";
+                        }
+                    }
+                    closedir(dir);
+                }
+            } else if (sub == "create" && args.size() > 2) {
+                engine_.set_workspace(Workspace::create(args[2]));
+                current_workspace_ = args[2];
+                Logger::success("Workspace creato e caricato: " + current_workspace_);
+            } else if (sub == "load" && args.size() > 2) {
+                auto ws = Workspace::load(args[2]);
+                if (ws) {
+                    engine_.set_workspace(std::move(ws));
+                    current_workspace_ = args[2];
+                    Logger::success("Workspace caricato: " + current_workspace_);
+                }
+            } else {
+                Logger::warn("Utilizzo: workspace <list|create|load> [name]");
             }
-            engine_.execute("dns", pa.target, pa.output_file, {});
             return true;
         });
 
-    // whois
-    register_command("whois", /*ports_ok=*/false,
-        "whois <target> [-o file]             WHOIS lookup",
-        [this](const std::vector<std::string>& args) -> bool {
-            const auto pa = parse_args(args, 1, /*ports_supported=*/false);
-            if (pa.target.empty()) {
-                Logger::warn("Usage: whois <target> [-o file]");
+    // Auto-register engine modules
+    for (Module* m : engine_.registry().all()) {
+        std::string name = m->name();
+        std::string help = m->help();
+        bool ports = m->supports_ports();
+
+        // Padding per allineamento help
+        std::string padded_name = name;
+        if (padded_name.size() < 12) padded_name.append(12 - padded_name.size(), ' ');
+
+        register_command(name, ports,
+            padded_name + "<target> ... " + help,
+            [this, name, ports](const std::vector<std::string>& args) -> bool {
+                const auto pa = parse_args(args, 1, ports);
+                if (pa.target.empty() && name != "history" && name != "graph") {
+                    Logger::warn("Usage: " + name + " <target> [flags]");
+                    return true;
+                }
+                engine_.execute(name, pa.target, pa.output_file, pa.ports);
                 return true;
-            }
-            engine_.execute("whois", pa.target, pa.output_file, {});
-            return true;
-        });
+            });
+    }
 
-    // scrape
-    register_command("scrape", /*ports_ok=*/false,
-        "scrape <target>                      OSINT scraping",
-        [this](const std::vector<std::string>& args) -> bool {
-            const auto pa = parse_args(args, 1, /*ports_supported=*/false);
-            if (pa.target.empty()) {
-                Logger::warn("Usage: scrape <target>");
-                return true;
-            }
-            engine_.execute("scrape", pa.target, {}, {});
-            return true;
-        });
-
-    // campaign
-    register_command("campaign", /*ports_ok=*/true,
-        "campaign <target> [-p ports]         Full OSINT campaign (DNS -> Scan -> Web)",
-        [this](const std::vector<std::string>& args) -> bool {
-            const auto pa = parse_args(args, 1, /*ports_supported=*/true);
-            if (pa.target.empty()) {
-                Logger::warn("Usage: campaign <target> [-p ports]");
-                return true;
-            }
-            engine_.execute("campaign", pa.target, {}, pa.ports);
-            return true;
-        });
-
-    // threat
-    register_command("threat", /*ports_ok=*/false,
-        "threat <target>                      Query VT or Shodan for Threat Intel",
-        [this](const std::vector<std::string>& args) -> bool {
-            const auto pa = parse_args(args, 1, /*ports_supported=*/false);
-            if (pa.target.empty()) {
-                Logger::warn("Usage: threat <target>");
-                return true;
-            }
-            engine_.execute("threat", pa.target, {}, {});
-            return true;
-        });
-
-    // history
-    register_command("history", /*ports_ok=*/false,
-        "history [target]                     Show scan history from local database",
-        [this](const std::vector<std::string>& args) -> bool {
-            std::string tgt = (args.size() > 1) ? args[1] : "";
-            engine_.execute("history", tgt, {}, {});
-            return true;
-        });
-
-    // graph
-    register_command("graph", /*ports_ok=*/false,
-        "graph [-o file]                      Export local database to JSON graph",
-        [this](const std::vector<std::string>& args) -> bool {
-            const auto pa = parse_args(args, 1, /*ports_supported=*/false);
-            std::string outfile = pa.output_file.empty() ? "graph.json" : pa.output_file;
-            engine_.execute("graph", "", outfile, {});
-            return true;
-        });
-
-    // nmap
-    register_command("nmap", /*ports_ok=*/true,
-        "nmap     <target> [-p ports] [-o file]       Run nmap with service detection",
-        [this](const std::vector<std::string>& args) -> bool {
-            const auto pa = parse_args(args, 1, true);
-            if (pa.target.empty()) { Logger::warn("Usage: nmap <target> [-p ports] [-o file]"); return true; }
-            engine_.execute("nmap", pa.target, pa.output_file, pa.ports);
-            return true;
-        });
-
-    // searchsploit
-    register_command("searchsploit", /*ports_ok=*/false,
-        "searchsploit <query> [-o file]               Search ExploitDB for exploits",
-        [this](const std::vector<std::string>& args) -> bool {
-            if (args.size() < 2) { Logger::warn("Usage: searchsploit <query> [-o file]"); return true; }
-            // Join all non-flag tokens as the query
-            const auto pa = parse_args(args, 1, false);
-            std::string query = pa.target;
-            engine_.execute("searchsploit", query, pa.output_file, {});
-            return true;
-        });
-
-    // use — set active module; list derived from registered recon commands
+    // use — set active module
     register_command("use", /*ports_ok=*/false,
-        "use <module>                         Set active module",
+        "use         <module>                 Set active module",
         [this](const std::vector<std::string>& args) -> bool {
             if (args.size() < 2) {
                 Logger::warn("Usage: use <module>  (" + recon_modules_list() + ")");
@@ -220,8 +169,8 @@ void Shell::register_command(
         help_lines_.push_back("  " + help_line);
 
     // track recon modules (those with actual targets)
-    const std::set<std::string> recon = {"scan","dns","whois","scrape","campaign","threat","history","nmap","searchsploit"};
-    if (recon.count(name))
+    // Se il comando esiste nel registry dell'engine, lo consideriamo un modulo recon
+    if (engine_.registry().find(name))
         recon_modules_[name] = ports_ok;
 }
 
@@ -260,9 +209,14 @@ void Shell::show_help() const {
 // ─── prompt ───────────────────────────────────────────────────────────────────
 
 std::string Shell::prompt() const {
-    if (current_context_.empty())
-        return "Gungnir > ";
-    return "gungnir(" + current_context_ + ") > ";
+    std::string p = "gungnir";
+    if (current_workspace_ != "default") {
+        p += ":" + current_workspace_;
+    }
+    if (!current_context_.empty()) {
+        p += "(" + current_context_ + ")";
+    }
+    return p + " > ";
 }
 
 // ─── run loop ─────────────────────────────────────────────────────────────────
