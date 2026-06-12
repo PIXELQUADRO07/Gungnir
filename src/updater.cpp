@@ -1,25 +1,19 @@
 #include "updater.hpp"
 #include "cli_utils.hpp"
 #include "logger.hpp"
+#include "http_client.hpp"
 
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <openssl/err.h>
-#include <openssl/ssl.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#include <sstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
-// ─── internal helpers ─────────────────────────────────────────────────────────
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 namespace {
 
-// Minimal JSON string extractor: finds the value of `"key": "value"`.
-// Returns empty string if not found.
+// Minimal JSON string-field extractor. Finds the first occurrence of
+// "key": "value" and returns the value. Returns empty string if not found.
 std::string json_string_field(const std::string& json, const std::string& key) {
     const std::string needle = "\"" + key + "\"";
     auto pos = json.find(needle);
@@ -27,7 +21,7 @@ std::string json_string_field(const std::string& json, const std::string& key) {
 
     pos = json.find('"', pos + needle.size());
     if (pos == std::string::npos) return {};
-    ++pos;  // skip opening quote
+    ++pos;
 
     std::string value;
     for (; pos < json.size(); ++pos) {
@@ -43,14 +37,13 @@ std::string json_string_field(const std::string& json, const std::string& key) {
             }
             continue;
         }
-        if (json[pos] == '"') break;  // closing quote
+        if (json[pos] == '"') break;
         value += json[pos];
     }
     return value;
 }
 
-// Compares two semantic version strings (e.g. "1.0.0" vs "1.2.0").
-// Returns true if remote > local.
+// Returns true if remote semver string is strictly greater than local.
 bool is_newer(const std::string& local, const std::string& remote) {
     auto parse = [](const std::string& v) -> std::vector<int> {
         std::vector<int> parts;
@@ -63,7 +56,6 @@ bool is_newer(const std::string& local, const std::string& remote) {
         while (parts.size() < 3) parts.push_back(0);
         return parts;
     };
-
     const auto l = parse(local);
     const auto r = parse(remote);
     for (size_t i = 0; i < 3; ++i) {
@@ -73,118 +65,44 @@ bool is_newer(const std::string& local, const std::string& remote) {
     return false;
 }
 
-// Opens a TCP socket to host:443 and returns the fd, or -1 on error.
-int tcp_connect(const std::string& host) {
-    addrinfo hints{}, *res = nullptr;
-    hints.ai_family   = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
+} // namespace
 
-    if (getaddrinfo(host.c_str(), "443", &hints, &res) != 0 || !res)
-        return -1;
-
-    int fd = -1;
-    for (auto* p = res; p; p = p->ai_next) {
-        fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (fd < 0) continue;
-        if (connect(fd, p->ai_addr, p->ai_addrlen) == 0) break;
-        close(fd);
-        fd = -1;
-    }
-    freeaddrinfo(res);
-    return fd;
-}
-
-// Performs a GET request over TLS and returns the response body (after headers).
-std::string https_get(const std::string& host, const std::string& path) {
-    // ── TLS setup ──────────────────────────────────────────────────────────
-    SSL_CTX* ctx = SSL_CTX_new(TLS_client_method());
-    if (!ctx) return {};
-
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER, nullptr);
-    SSL_CTX_set_default_verify_paths(ctx);
-
-    const int fd = tcp_connect(host);
-    if (fd < 0) { SSL_CTX_free(ctx); return {}; }
-
-    SSL* ssl = SSL_new(ctx);
-    SSL_set_fd(ssl, fd);
-    SSL_set_tlsext_host_name(ssl, host.c_str());
-
-    if (SSL_connect(ssl) != 1) {
-        SSL_free(ssl);
-        SSL_CTX_free(ctx);
-        close(fd);
-        return {};
-    }
-
-    // ── HTTP/1.1 request ──────────────────────────────────────────────────
-    const std::string req =
-        "GET " + path + " HTTP/1.1\r\n"
-        "Host: " + host + "\r\n"
-        "User-Agent: Gungnir/" + GUNGNIR_VERSION_NUM + "\r\n"
-        "Accept: application/vnd.github+json\r\n"
-        "Connection: close\r\n"
-        "\r\n";
-
-    SSL_write(ssl, req.c_str(), static_cast<int>(req.size()));
-
-    // ── read response ─────────────────────────────────────────────────────
-    std::string raw;
-    char buf[4096];
-    int n;
-    while ((n = SSL_read(ssl, buf, sizeof(buf))) > 0)
-        raw.append(buf, n);
-
-    SSL_shutdown(ssl);
-    SSL_free(ssl);
-    SSL_CTX_free(ctx);
-    close(fd);
-
-    // ── strip HTTP headers (find blank line \r\n\r\n) ─────────────────────
-    const auto sep = raw.find("\r\n\r\n");
-    if (sep == std::string::npos) return raw;
-    return raw.substr(sep + 4);
-}
-
-}  // namespace
-
-#include <thread>
-#include <cstdlib>
+// ─── public API ───────────────────────────────────────────────────────────────
 
 void Updater::check() {
-    if (std::getenv("GUNGNIR_NO_UPDATE") != nullptr) {
-        return;
+    // Allow users to opt out via environment variable
+    if (std::getenv("GUNGNIR_NO_UPDATE") != nullptr) return;
+
+    // Use HttpClient (libcurl) — same as threat_intel, no raw TLS code needed
+    const std::string url =
+        std::string("https://api.github.com/repos/") +
+        GUNGNIR_REPO_OWNER + "/" + GUNGNIR_REPO_NAME +
+        "/releases/latest";
+
+    const std::map<std::string, std::string> headers = {
+        {"Accept",     "application/vnd.github+json"},
+        {"User-Agent", std::string("Gungnir/") + GUNGNIR_VERSION_NUM},
+    };
+
+    // Synchronous check with a short timeout — happens once at startup.
+    // Silent on any network failure (firewall, no internet, etc.).
+    const HttpResponse resp = HttpClient::get(url, headers, /*timeout_s=*/5);
+    if (!resp.success || resp.status_code != 200) return;
+
+    const std::string tag      = json_string_field(resp.body, "tag_name");
+    const std::string html_url = json_string_field(resp.body, "html_url");
+    if (tag.empty()) return;
+
+    // Strip leading 'v' from tag (e.g. "v1.3.0" → "1.3.0")
+    std::string remote_ver = tag;
+    if (!remote_ver.empty() && remote_ver[0] == 'v')
+        remote_ver.erase(0, 1);
+
+    if (is_newer(GUNGNIR_VERSION_NUM, remote_ver)) {
+        std::cout << "\n";
+        Logger::warn("New version available: " + tag +
+                     "  (current: v" + GUNGNIR_VERSION_NUM + ")");
+        Logger::info("Download: " + html_url);
+        std::cout << "\n";
     }
-
-    std::cout << "[*] Checking updates...\n";
-
-    std::thread([]() {
-        const std::string host = "api.github.com";
-        const std::string path = std::string("/repos/") +
-                                 GUNGNIR_REPO_OWNER + "/" +
-                                 GUNGNIR_REPO_NAME  +
-                                 "/releases/latest";
-
-        const std::string body = https_get(host, path);
-        if (body.empty()) {
-            return;
-        }
-
-        const std::string tag      = json_string_field(body, "tag_name");
-        const std::string html_url = json_string_field(body, "html_url");
-
-        if (tag.empty()) return;
-
-        std::string remote_ver = tag;
-        if (!remote_ver.empty() && remote_ver[0] == 'v')
-            remote_ver.erase(0, 1);
-
-        if (is_newer(GUNGNIR_VERSION_NUM, remote_ver)) {
-            std::cout << "\n";
-            Logger::warn("Nuova versione disponibile: " + tag +
-                         "  (locale: v" + GUNGNIR_VERSION_NUM + ")");
-            Logger::info("Scarica: " + html_url);
-            std::cout << "\n";
-        }
-    }).detach();
 }

@@ -1,13 +1,15 @@
 #include <algorithm>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
+
 #include "cli_utils.hpp"
-#include "updater.hpp"
-#include "engine.hpp"
-#include "shell.hpp"
 #include "config.hpp"
+#include "engine.hpp"
 #include "logger.hpp"
+#include "shell.hpp"
+#include "updater.hpp"
 
 // ─── usage ────────────────────────────────────────────────────────────────────
 
@@ -16,10 +18,11 @@ static void show_usage() {
         "\n"
         "  " << GUNGNIR_VERSION << "\n"
         "\n"
-        "  Utilizzo:\n"
-        "    ./Gungnir                          Avvia shell interattiva\n"
-        "    ./Gungnir <comando> <target> [..]  Esegui direttamente\n"
-        "  Comandi:\n"
+        "  Usage:\n"
+        "    ./Gungnir                            Launch interactive shell\n"
+        "    ./Gungnir <command> <target> [flags] Run a single command\n"
+        "\n"
+        "  Commands:\n"
         "    scan     <target> [-p ports] [-o file]\n"
         "    dns      <target> [-o file]\n"
         "    whois    <target> [-o file]\n"
@@ -27,67 +30,72 @@ static void show_usage() {
         "    campaign <target> [-p ports]\n"
         "    threat   <target>\n"
         "    history  [target]\n"
-        "    graph    [-o output.json]\n"
+        "    graph    [-o file]\n"
         "\n"
-        "  Flag:\n"
-        "    -p <ports>       Porte TCP separate da virgola (es. 22,80,443)\n"
-        "    -o <file>        Esporta risultato in JSON\n"
-        "    -q, --quiet      Output solo risultati (per piping/scripting)\n"
-        "    -n, --no-update  Disabilita il controllo aggiornamenti\n"
-        "    -v, --version\n"
-        "    -h, --help\n"
+        "  Flags:\n"
+        "    -p <ports>       Comma-separated TCP ports (e.g. 22,80,443)\n"
+        "    -o <file>        Export result to JSON file\n"
+        "    -q, --quiet      Suppress banner and info output (for scripting)\n"
+        "    -n, --no-update  Skip update check at startup\n"
+        "    -v, --version    Show version and exit\n"
+        "    -h, --help       Show this help and exit\n"
         "\n"
-        "  Esempi:\n"
+        "  Examples:\n"
         "    ./Gungnir scan   example.com\n"
         "    ./Gungnir scan   example.com -p 22,80,443 -o result.json\n"
         "    ./Gungnir dns    example.com\n"
         "    ./Gungnir whois  example.com -o whois.json\n"
-        "    ./Gungnir scrape user123\n"
+        "    ./Gungnir scrape example.com\n"
         "    ./Gungnir campaign example.com -p 80,443\n"
         "    ./Gungnir threat example.com\n"
         "    ./Gungnir history\n"
+        "    ./Gungnir history example.com\n"
         "    ./Gungnir graph -o out.json\n"
         "\n"
         "  Config (~/.gungnir.conf):\n"
-        "    VT_API_KEY      = <chiave_virustotal>\n"
-        "    SHODAN_API_KEY  = <chiave_shodan>\n"
+        "    VT_API_KEY     = <virustotal_key>\n"
+        "    SHODAN_API_KEY = <shodan_key>\n"
         "\n"
-        "  Stile legacy (ancora supportato):\n"
+        "  Legacy flag style (still supported):\n"
         "    ./Gungnir -t example.com -m scan -p 22,80,443\n"
         "\n";
 }
 
-// ─── subcommand parsing ───────────────────────────────────────────────────────
-// Converts argv[2..] into a token vector and reuses parse_args from cli_utils.
+// ─── subcommand table ─────────────────────────────────────────────────────────
 
-static ParsedArgs parse_subcommand(int argc, char* argv[], bool ports_ok) {
-    // rebuild as tokens starting from argv[2] (argv[1] is the command name)
-    std::vector<std::string> tokens;
-    for (int i = 2; i < argc; ++i)
-        tokens.emplace_back(argv[i]);
-    return parse_args(tokens, 0, ports_ok);
-}
+struct CmdInfo {
+    bool ports_ok;
+    bool needs_target;
+};
 
-// ─── legacy flag parsing (-t / -m / -p / -o) ─────────────────────────────────
+static const std::map<std::string, CmdInfo> COMMANDS = {
+    {"scan",     {true,  true }},
+    {"dns",      {false, true }},
+    {"whois",    {false, true }},
+    {"scrape",   {false, true }},
+    {"campaign", {true,  true }},
+    {"threat",   {false, true }},
+    {"history",  {false, false}},   // target optional
+    {"graph",    {false, false}},   // target unused
+};
+
+// ─── legacy flag parsing ──────────────────────────────────────────────────────
 
 struct LegacyArgs {
-    std::string mode, target, output_file;
+    std::string      mode, target, output_file;
     std::vector<int> ports;
-    bool valid = false;
+    bool             valid = false;
 };
 
 static LegacyArgs parse_legacy(int argc, char* argv[]) {
     LegacyArgs la;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
-        if      (a == "-m" && i+1<argc) { la.mode        = argv[++i]; }
-        else if (a == "-t" && i+1<argc) { la.target      = argv[++i]; }
-        else if (a == "-o" && i+1<argc) { la.output_file = argv[++i]; }
-        else if (a == "-p" && i+1<argc) { la.ports       = parse_ports(argv[++i]); }
-        else {
-            Logger::warn("Flag non riconosciuta: " + a +
-                         ". Usa -h per la lista dei comandi.");
-        }
+        if      (a == "-m" && i+1<argc) la.mode        = argv[++i];
+        else if (a == "-t" && i+1<argc) la.target      = argv[++i];
+        else if (a == "-o" && i+1<argc) la.output_file = argv[++i];
+        else if (a == "-p" && i+1<argc) la.ports       = parse_ports(argv[++i]);
+        else Logger::warn("Unknown flag: " + a + ". Use -h for help.");
     }
     la.valid = !la.mode.empty() && !la.target.empty();
     return la;
@@ -96,24 +104,25 @@ static LegacyArgs parse_legacy(int argc, char* argv[]) {
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 int main(int argc, char* argv[]) {
-    // Pre-check global flags before banner
+    // Pre-scan for global modifiers before printing anything
     bool no_update = false;
     bool quiet     = false;
     for (int i = 1; i < argc; ++i) {
-        std::string a = argv[i];
+        const std::string a = argv[i];
         if (a == "-n" || a == "--no-update") no_update = true;
         if (a == "-q" || a == "--quiet")     quiet     = true;
     }
     Logger::quiet_mode = quiet;
 
     if (!quiet) Logger::print_banner();
+    if (!quiet && !no_update) Updater::check();
 
-    if (!no_update && !quiet) Updater::check();
-
-    // Config banner — inform user about API key status
-    const Config& cfg = Config::instance();
-    if (!quiet && cfg.get_vt_api_key().empty() && cfg.get_shodan_api_key().empty()) {
-        Logger::info("Threat Intel: nessuna API key — aggiungi VT_API_KEY / SHODAN_API_KEY a ~/.gungnir.conf");
+    // Inform user about API key status once at startup
+    if (!quiet) {
+        const Config& cfg = Config::instance();
+        if (cfg.get_vt_api_key().empty() && cfg.get_shodan_api_key().empty())
+            Logger::info("Threat Intel: no API keys configured — "
+                         "add VT_API_KEY / SHODAN_API_KEY to ~/.gungnir.conf");
     }
 
     // No arguments → interactive shell
@@ -127,9 +136,6 @@ int main(int argc, char* argv[]) {
 
     // ── global flags ──────────────────────────────────────────────────────────
     if (first == "-h" || first == "--help")    { show_usage(); return 0; }
-    if (first == "-n" || first == "--no-update") {
-        // already handled; fall through to next arg
-    }
     if (first == "-v" || first == "--version") {
         std::cout << GUNGNIR_VERSION << "\n";
         return 0;
@@ -139,46 +145,44 @@ int main(int argc, char* argv[]) {
         shell.run();
         return 0;
     }
+    // -q / -n already consumed above; skip them as first arg
+    if (first == "-q" || first == "--quiet" ||
+        first == "-n" || first == "--no-update") {
+        // If that was the only arg, launch the shell
+        if (argc == 2) { Shell shell; shell.run(); return 0; }
+        // Otherwise fall through — the real command follows
+    }
 
-    // ── subcommand style:  ./Gungnir scan example.com [...] ───────────────────
-    struct CmdInfo { bool ports_ok; };
-    const std::map<std::string, CmdInfo> known_commands = {
-        {"scan",     {true }},
-        {"dns",      {false}},
-        {"whois",    {false}},
-        {"scrape",   {false}},
-        {"campaign", {true }},
-        {"threat",   {false}},
-        {"history",  {false}},
-        {"graph",    {false}},
-    };
+    // ── subcommand style: ./Gungnir scan example.com [...] ────────────────────
+    auto cmd_it = COMMANDS.find(first);
+    if (cmd_it != COMMANDS.end()) {
+        const CmdInfo& ci = cmd_it->second;
 
-    auto cmd_it = known_commands.find(first);
-    if (cmd_it != known_commands.end()) {
-        const ParsedArgs pa = parse_subcommand(argc, argv, cmd_it->second.ports_ok);
-        bool needs_target = (first != "graph" && first != "history");
-        if (needs_target && pa.target.empty()) {
-            Logger::error("Target mancante.  Uso: ./Gungnir " + first + " <target>");
+        // Build token list from argv[2..] and reuse parse_args
+        std::vector<std::string> tokens;
+        for (int i = 2; i < argc; ++i) tokens.emplace_back(argv[i]);
+        const ParsedArgs pa = parse_args(tokens, 0, ci.ports_ok);
+
+        if (ci.needs_target && pa.target.empty()) {
+            Logger::error("Target required.  Usage: ./Gungnir " + first + " <target>");
             return 1;
         }
+
         Engine engine;
-        std::string t = pa.target.empty() ? "dummy" : pa.target;
-        return engine.execute(first, t, pa.output_file, pa.ports) ? 0 : 1;
+        // For commands without a target (history, graph) pass empty string —
+        // engine executors handle that cleanly.
+        return engine.execute(first, pa.target, pa.output_file, pa.ports) ? 0 : 1;
     }
 
     // ── legacy flag style: ./Gungnir -t example.com -m scan [...] ─────────────
-    if (first[0] == '-') {
+    if (!first.empty() && first[0] == '-') {
         const LegacyArgs la = parse_legacy(argc, argv);
-        if (!la.valid) {
-            show_usage();
-            return 1;
-        }
+        if (!la.valid) { show_usage(); return 1; }
         Engine engine;
         return engine.execute(la.mode, la.target, la.output_file, la.ports) ? 0 : 1;
     }
 
     // ── nothing matched ───────────────────────────────────────────────────────
-    Logger::error("Comando non riconosciuto: '" + first + "'.");
-    show_usage();
+    Logger::error("Unknown command: '" + first + "'. Use -h for help.");
     return 1;
 }

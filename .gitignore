@@ -1,15 +1,21 @@
 # Build artifacts
 /build/
 
+# Runtime files (generated at runtime, not source)
+*.db
+graph.json
+test_graph.json
+test-scan
+
+# Release archives (use git tags + GitHub releases instead)
+/Releases/
+
 # CMake generated files
-/CMakeFiles/
-/CMakeCache.txt
-/cmake_install.cmake
-/Makefile
-/Makefile.cmake
-/Makefile2
-/CMakeLists.txt.user
-/CMakeLists.txt.user.[0-9]*
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
 
 # Compiler artifacts
 *.o
@@ -21,21 +27,12 @@
 *.lib
 *.out
 
-# Temporary files
+# Temporary / editor files
 *~
 *.swp
 *.tmp
 *.log
-
-# IDE/editor files
 .vscode/
 .idea/
 *.iml
-
-# macOS
 .DS_Store
-
-# CMake compilation database
-compile_commands.json
-
-/Releases/

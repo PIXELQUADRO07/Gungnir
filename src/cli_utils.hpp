@@ -21,7 +21,6 @@ inline std::vector<int> parse_ports(const std::string& ports_arg) {
     std::istringstream ss(ports_arg);
     std::string token;
     while (std::getline(ss, token, ',')) {
-        // trim whitespace around each token
         const auto b = token.find_first_not_of(" \t");
         const auto e = token.find_last_not_of(" \t");
         if (b == std::string::npos) continue;
@@ -31,17 +30,16 @@ inline std::vector<int> parse_ports(const std::string& ports_arg) {
             if (port > 0 && port <= 65535)
                 results.push_back(port);
             else
-                Logger::warn("Porta fuori range ignorata: " + p);
+                Logger::warn("Port out of range, skipped: " + p);
         } catch (...) {
-            Logger::warn("Porta non valida ignorata: " + p);
+            Logger::warn("Invalid port value, skipped: " + p);
         }
     }
     return results;
 }
 
 // ─── tokenize ─────────────────────────────────────────────────────────────────
-// Splits a shell-like line into tokens. Supports single and double quoted
-// strings so that paths with spaces work correctly:
+// Splits a shell-like line into tokens with support for single/double quoting:
 //   scan example.com -o "my output.json"  →  ["scan","example.com","-o","my output.json"]
 
 inline std::vector<std::string> tokenize(const std::string& line) {
@@ -49,49 +47,31 @@ inline std::vector<std::string> tokenize(const std::string& line) {
     std::string current;
     char in_quote = 0;
 
-    for (size_t i = 0; i < line.size(); ++i) {
-        const char c = line[i];
-
+    for (const char c : line) {
         if (in_quote) {
-            if (c == in_quote) {
-                in_quote = 0;           // closing quote
-            } else {
-                current += c;
-            }
+            if (c == in_quote) in_quote = 0;
+            else               current += c;
             continue;
         }
-
-        if (c == '\'' || c == '"') {
-            in_quote = c;               // opening quote
+        if (c == '\'' || c == '"') { in_quote = c; continue; }
+        if (c == ' '  || c == '\t') {
+            if (!current.empty()) { tokens.push_back(current); current.clear(); }
             continue;
         }
-
-        if (c == ' ' || c == '\t') {
-            if (!current.empty()) {
-                tokens.push_back(current);
-                current.clear();
-            }
-            continue;
-        }
-
         current += c;
     }
-
-    if (!current.empty())
-        tokens.push_back(current);
-
+    if (!current.empty()) tokens.push_back(current);
     return tokens;
 }
 
-// ─── parse_flags ──────────────────────────────────────────────────────────────
+// ─── parse_args ───────────────────────────────────────────────────────────────
 // Scans tokens[from..] for -p and -o flags.
-// The target is the first non-flag token; returns it (or empty if not found).
-// Warns on unknown flags.
+// The target is the first non-flag token. Warns on unknown flags.
 
 struct ParsedArgs {
-    std::string target;
+    std::string      target;
     std::vector<int> ports;
-    std::string output_file;
+    std::string      output_file;
 };
 
 inline ParsedArgs parse_args(
@@ -102,31 +82,38 @@ inline ParsedArgs parse_args(
     ParsedArgs result;
     for (size_t i = from; i < tokens.size(); ++i) {
         const std::string& t = tokens[i];
+
         if (t == "-p") {
             if (!ports_supported) {
-                Logger::warn("Flag -p ignorata: questo comando non supporta porte.");
-                if (i + 1 < tokens.size()) ++i;  // consume value anyway
+                Logger::warn("Flag -p ignored: this command does not use ports.");
+                if (i + 1 < tokens.size()) ++i;
                 continue;
             }
             if (i + 1 >= tokens.size()) {
-                Logger::warn("Flag -p richiede un valore (es. -p 80,443).");
+                Logger::warn("Flag -p requires a value (e.g. -p 80,443).");
                 continue;
             }
             result.ports = parse_ports(tokens[++i]);
+
         } else if (t == "-o") {
             if (i + 1 >= tokens.size()) {
-                Logger::warn("Flag -o richiede un valore (es. -o output.json).");
+                Logger::warn("Flag -o requires a value (e.g. -o output.json).");
                 continue;
             }
             result.output_file = tokens[++i];
-        } else if (t == "-n" || t == "--no-update") {
-            // handled globally in main(); safe to ignore here
-        } else if (t[0] == '-') {
-            Logger::warn("Flag sconosciuta ignorata: " + t + ". Digita 'help' per la lista.");
+
+        } else if (t == "-n" || t == "--no-update" ||
+                   t == "-q" || t == "--quiet") {
+            // global flags already handled in main(); safe to skip here
+
+        } else if (!t.empty() && t[0] == '-') {
+            Logger::warn("Unknown flag ignored: " + t + ". Type 'help' for the list.");
+
         } else if (result.target.empty()) {
             result.target = t;
+
         } else {
-            Logger::warn("Argomento extra ignorato: " + t);
+            Logger::warn("Extra argument ignored: " + t);
         }
     }
     return result;

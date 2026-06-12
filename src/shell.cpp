@@ -93,20 +93,20 @@ Shell::Shell() {
 
     // history
     register_command("history", /*ports_ok=*/false,
-        "history [target]                     Mostra storico scan dal DB locale",
+        "history [target]                     Show scan history from local database",
         [this](const std::vector<std::string>& args) -> bool {
             std::string tgt = (args.size() > 1) ? args[1] : "";
-            engine_.execute("history", tgt.empty() ? "dummy" : tgt, {}, {});
+            engine_.execute("history", tgt, {}, {});
             return true;
         });
 
     // graph
     register_command("graph", /*ports_ok=*/false,
-        "graph [-o file]                      Esporta DB locale in JSON graph",
+        "graph [-o file]                      Export local database to JSON graph",
         [this](const std::vector<std::string>& args) -> bool {
             const auto pa = parse_args(args, 1, /*ports_supported=*/false);
             std::string outfile = pa.output_file.empty() ? "graph.json" : pa.output_file;
-            engine_.execute("graph", "dummy", outfile, {});
+            engine_.execute("graph", "", outfile, {});
             return true;
         });
 
@@ -246,7 +246,7 @@ std::string Shell::prompt() const {
 // ─── run loop ─────────────────────────────────────────────────────────────────
 
 void Shell::run() {
-    Logger::info("Interactive mode. Type 'help' for commands.");
+    Logger::info("Interactive shell. Type 'help' for available commands.");
 
 #ifdef USE_READLINE
     using_history();
@@ -276,5 +276,5 @@ void Shell::run() {
         if (!dispatch(tokenize(line))) break;
     }
 
-    std::cout << "Arrivederci.\n";
+    std::cout << "Goodbye.\n";
 }
