@@ -23,6 +23,7 @@ set(SOURCES
     modules/network/http_client.cpp
     modules/network/waf.cpp
     modules/network/ssl_geoip.cpp
+    modules/network/screenshot.cpp
     modules/recon/recon.cpp
     modules/recon/socmint.cpp
     modules/recon/secrets.cpp

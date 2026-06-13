@@ -115,6 +115,8 @@ public:
     bool       run_secrets     (const std::string& target);
     bool       run_ssl         (const std::string& target);
     bool       run_geoip       (const std::string& ip);
+    bool       run_reverse_ip  (const std::string& ip);
+    bool       run_screenshot  (const std::string& target);
 
 public:
     // ── printers ──────────────────────────────────────────────────────────────

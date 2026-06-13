@@ -37,6 +37,13 @@ static void show_usage() {
         "    fuzz     <target>\n"
         "    s3       <target>\n"
         "    breach   <email>\n"
+        "    socmint  <username>\n"
+        "    waf      <target>\n"
+        "    secrets  <target>\n"
+        "    ssl      <target>\n"
+        "    geoip    <ip>\n"
+        "    revip    <ip>\n"
+        "    screenshot <target>\n"
         "\n"
         "  Flags:\n"
         "    -p <ports>       Comma-separated TCP ports (e.g. 22,80,443)\n"
@@ -59,6 +66,8 @@ static void show_usage() {
         "    ./Gungnir secrets example.com\n"
         "    ./Gungnir ssl example.com\n"
         "    ./Gungnir geoip 8.8.8.8\n"
+        "    ./Gungnir revip 8.8.8.8\n"
+        "    ./Gungnir screenshot example.com\n"
         "    ./Gungnir history\n"
         "    ./Gungnir history example.com\n"
         "    ./Gungnir graph -o out.json\n"
@@ -99,6 +108,8 @@ static const std::map<std::string, CmdInfo> COMMANDS = {
     {"secrets",  {false, true }},
     {"ssl",      {false, true }},
     {"geoip",    {false, true }},
+    {"revip",    {false, true }},
+    {"screenshot", {false, true }},
 };
 
 // ─── legacy flag parsing ──────────────────────────────────────────────────────

@@ -16,7 +16,8 @@ sudo apt-get install -y \
     libsqlite3-dev \
     libreadline-dev \
     nmap \
-    exploitdb
+    exploitdb \
+    chromium-browser
 
 echo "[+] Success! Gungnir dependencies installed."
 echo "[+] You can now build the project with:"

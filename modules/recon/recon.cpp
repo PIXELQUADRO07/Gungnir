@@ -583,3 +583,25 @@ WhoisResult run_whois_lookup(const std::string& target) {
 
     return result;
 }
+
+std::vector<std::string> run_reverse_ip_lookup(const std::string& ip) {
+    std::vector<std::string> domains;
+    std::string url = "https://api.hackertarget.com/reverseiplookup/?q=" + ip;
+    
+    Logger::info("Reverse IP lookup (HackerTarget) per: " + ip);
+    HttpResponse resp = HttpClient::get(url);
+    
+    if (resp.status_code == 200) {
+        std::istringstream ss(resp.body);
+        std::string line;
+        while (std::getline(ss, line)) {
+            if (!line.empty() && line.find("error") == std::string::npos && line.find("API count") == std::string::npos) {
+                domains.push_back(line);
+            }
+        }
+    } else {
+        Logger::error("HackerTarget API fallito con codice: " + std::to_string(resp.status_code));
+    }
+    
+    return domains;
+}

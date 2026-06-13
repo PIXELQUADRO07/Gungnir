@@ -57,4 +57,7 @@ std::string run_reverse_dns(const std::string& ip);
 // when possible (e.g. iana.org -> registry-specific server).
 WhoisResult run_whois_lookup(const std::string& target);
 
+// Performs a reverse IP lookup to find other domains hosted on the same IP.
+std::vector<std::string> run_reverse_ip_lookup(const std::string& ip);
+
 #endif

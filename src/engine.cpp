@@ -9,6 +9,7 @@
 #include "waf.hpp"
 #include "secrets.hpp"
 #include "ssl_geoip.hpp"
+#include "screenshot.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -180,6 +181,24 @@ public:
     bool run(Context& ctx) override { return e.run_geoip(ctx.target); }
 };
 
+class ReverseIpModule : public Module {
+    Engine& e;
+public:
+    ReverseIpModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "revip"; }
+    std::string help() const override { return "Reverse IP lookup"; }
+    bool run(Context& ctx) override { return e.run_reverse_ip(ctx.target); }
+};
+
+class ScreenshotModule : public Module {
+    Engine& e;
+public:
+    ScreenshotModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "screenshot"; }
+    std::string help() const override { return "Capture website screenshot"; }
+    bool run(Context& ctx) override { return e.run_screenshot(ctx.target); }
+};
+
 class HistoryModule : public Module {
     Engine& e;
 public:
@@ -256,6 +275,8 @@ void Engine::register_modules() {
     registry_.register_module(std::make_unique<SecretsModule>(*this));
     registry_.register_module(std::make_unique<SslModule>(*this));
     registry_.register_module(std::make_unique<GeoIpModule>(*this));
+    registry_.register_module(std::make_unique<ReverseIpModule>(*this));
+    registry_.register_module(std::make_unique<ScreenshotModule>(*this));
     registry_.register_module(std::make_unique<HistoryModule>(*this));
     registry_.register_module(std::make_unique<GraphModule>(*this));
     registry_.register_module(std::make_unique<ReportModule>(*this));
@@ -683,6 +704,41 @@ bool Engine::run_geoip(const std::string& ip) {
     db().save_geoip(ip, result);
 
     return true;
+}
+
+bool Engine::run_reverse_ip(const std::string& ip) {
+    if (ip.empty()) {
+        Logger::error("IP cannot be empty for reverse IP lookup.");
+        return false;
+    }
+
+    const auto domains = run_reverse_ip_lookup(ip);
+    
+    if (domains.empty()) {
+        Logger::info("No other domains found for IP: " + ip);
+    } else {
+        Logger::success("Found " + std::to_string(domains.size()) + " domains for IP " + ip + ":");
+        for (const auto& domain : domains) {
+            std::cout << "  - " << domain << "\n";
+        }
+    }
+    return true;
+}
+
+bool Engine::run_screenshot(const std::string& target) {
+    if (target.empty()) {
+        Logger::error("Target cannot be empty for screenshot.");
+        return false;
+    }
+
+    const auto result = capture_screenshot(target);
+    
+    if (result.success) {
+        Logger::success("Screenshot saved to: " + result.output_path);
+    } else {
+        Logger::error("Screenshot failed: " + result.error);
+    }
+    return result.success;
 }
 
 // ─── printers ─────────────────────────────────────────────────────────────────
