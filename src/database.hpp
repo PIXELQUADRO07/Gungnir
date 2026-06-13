@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "recon.hpp"
+#include "ssl_geoip.hpp"
 
 struct sqlite3;
 
@@ -44,11 +45,19 @@ public:
     // Save Service Info
     bool save_service(const std::string& target, const ServiceInfo& service);
 
+    // Save SSL and GeoIP
+    bool save_ssl(const std::string& target, const SslInfo& info);
+    bool save_geoip(const std::string& ip, const GeoIpInfo& info);
+
     // History
     std::vector<HistoryEntry> get_history(const std::string& target = "");
 
     // Services
     std::vector<ServiceInfo> get_services(const std::string& target);
+
+    // Get SSL and GeoIP
+    SslInfo get_ssl(const std::string& target);
+    GeoIpInfo get_geoip(const std::string& ip);
 
     // Export Graph
     bool export_graph_json(const std::string& output_file);

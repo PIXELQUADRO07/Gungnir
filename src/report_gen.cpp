@@ -12,6 +12,8 @@ bool generate_html(const std::string& target, const std::string& path, Database&
 
     auto history = db.get_history(target);
     auto services = db.get_services(target);
+    auto ssl = db.get_ssl(target);
+    auto geo = db.get_geoip(target);
 
     out << "<!DOCTYPE html>\n<html>\n<head>\n";
     out << "<title>Gungnir Report - " << target << "</title>\n";
@@ -28,6 +30,27 @@ bool generate_html(const std::string& target, const std::string& path, Database&
 
     out << "<h1>Gungnir OSINT Report</h1>\n";
     out << "<p><strong>Target:</strong> " << target << "</p>\n";
+
+    if (geo.success) {
+        out << "<h2>GeoIP Information</h2>\n";
+        out << "<table>\n"
+            << "<tr><th>Country</th><td>" << geo.country << "</td></tr>\n"
+            << "<tr><th>Region</th><td>" << geo.region << "</td></tr>\n"
+            << "<tr><th>City</th><td>" << geo.city << "</td></tr>\n"
+            << "<tr><th>ISP</th><td>" << geo.isp << "</td></tr>\n"
+            << "<tr><th>Coordinates</th><td>" << geo.lat << ", " << geo.lon << "</td></tr>\n"
+            << "</table>\n";
+    }
+
+    if (ssl.success) {
+        out << "<h2>SSL Certificate</h2>\n";
+        out << "<table>\n"
+            << "<tr><th>Subject</th><td>" << ssl.subject << "</td></tr>\n"
+            << "<tr><th>Issuer</th><td>" << ssl.issuer << "</td></tr>\n"
+            << "<tr><th>Valid From</th><td>" << ssl.valid_from << "</td></tr>\n"
+            << "<tr><th>Valid Until</th><td>" << ssl.valid_until << "</td></tr>\n"
+            << "</table>\n";
+    }
 
     out << "<h2>Services</h2>\n";
     if (services.empty()) {

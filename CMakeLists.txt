@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Threads  REQUIRED)
 find_package(CURL     REQUIRED)
 find_package(SQLite3  REQUIRED)
+find_package(OpenSSL  REQUIRED)
 
 set(SOURCES
     src/main.cpp
@@ -20,7 +21,11 @@ set(SOURCES
     modules/scraper.cpp
     modules/network/network.cpp
     modules/network/http_client.cpp
+    modules/network/waf.cpp
+    modules/network/ssl_geoip.cpp
     modules/recon/recon.cpp
+    modules/recon/socmint.cpp
+    modules/recon/secrets.cpp
     modules/recon/threat_intel.cpp
     modules/nmap/nmap.cpp
     modules/searchsploit/searchsploit.cpp
@@ -44,6 +49,8 @@ target_link_libraries(Gungnir PRIVATE
     Threads::Threads
     CURL::libcurl
     SQLite::SQLite3
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 find_library(RESOLV_LIB resolv)

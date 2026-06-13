@@ -110,6 +110,11 @@ public:
     bool       run_fuzz        (const std::string& target);
     bool       run_s3          (const std::string& target);
     bool       run_breach      (const std::string& target);
+    bool       run_socmint     (const std::string& username);
+    bool       run_waf         (const std::string& target);
+    bool       run_secrets     (const std::string& target);
+    bool       run_ssl         (const std::string& target);
+    bool       run_geoip       (const std::string& ip);
 
 public:
     // ── printers ──────────────────────────────────────────────────────────────

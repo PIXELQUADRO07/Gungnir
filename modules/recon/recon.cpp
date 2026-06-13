@@ -310,14 +310,19 @@ DnsResult run_dns_lookup(const std::string& target) {
 std::vector<std::string> run_dns_subdomain_enum(const std::string& target) {
     const std::vector<std::string> wordlist = {
         "www", "mail", "dev", "test", "api", "admin", "blog", "staging",
-        "vpn", "smtp", "pop", "imap", "ns1", "ns2", "ftp", "portal"
+        "vpn", "smtp", "pop", "imap", "ns1", "ns2", "ftp", "portal",
+        "dev", "prod", "stage", "git", "ssh", "web", "app", "m", "db",
+        "cloud", "static", "assets", "cdn", "shop", "api", "v1", "v2",
+        "support", "billing", "beta", "demo", "internal", "corp", "alpha",
+        "secure", "payment", "login", "register", "status", "api-docs",
+        "jenkins", "gitlab", "docker", "monitor", "grafana", "prometheus"
     };
 
     std::vector<std::string> found;
     std::mutex result_mutex;
     std::atomic<size_t> next_index{0};
 
-    const size_t thread_count = std::min(static_cast<size_t>(16), wordlist.size());
+    const size_t thread_count = std::min(static_cast<size_t>(50), wordlist.size());
     std::vector<std::thread> workers;
     workers.reserve(thread_count);
 
@@ -347,6 +352,7 @@ std::vector<std::string> run_dns_subdomain_enum(const std::string& target) {
     }
 
     std::sort(found.begin(), found.end());
+    found.erase(std::unique(found.begin(), found.end()), found.end());
     return found;
 }
 
@@ -354,15 +360,14 @@ std::vector<std::string> run_passive_subdomain_enum(const std::string& target) {
     std::vector<std::string> subdomains;
     std::set<std::string> unique_subs;
 
-    // crt.sh query for JSON output
-    const std::string url = "https://crt.sh/?q=%25." + target + "&output=json";
-    
+    // --- crt.sh ---
+    const std::string crt_url = "https://crt.sh/?q=%25." + target + "&output=json";
     Logger::info("Enumerazione passiva subdomains (crt.sh) per: " + target);
-    HttpResponse resp = HttpClient::get(url, {}, 20); // Longer timeout for crt.sh
+    HttpResponse crt_resp = HttpClient::get(crt_url, {}, 20);
 
-    if (resp.status_code == 200) {
+    if (crt_resp.status_code == 200) {
         try {
-            auto j = nlohmann::json::parse(resp.body);
+            auto j = nlohmann::json::parse(crt_resp.body);
             for (const auto& item : j) {
                 if (item.contains("common_name")) {
                     std::string cn = item["common_name"].get<std::string>();
@@ -385,11 +390,27 @@ std::vector<std::string> run_passive_subdomain_enum(const std::string& target) {
                     }
                 }
             }
-        } catch (const std::exception& e) {
-            Logger::warn("crt.sh: parsing fallito — " + std::string(e.what()));
-        }
-    } else {
-        Logger::error("crt.sh ha risposto con codice: " + std::to_string(resp.status_code));
+        } catch (...) {}
+    }
+
+    // --- AlienVault OTX ---
+    const std::string av_url = "https://otx.alienvault.com/api/v1/indicators/domain/" + target + "/passive_dns";
+    Logger::info("Enumerazione passiva subdomains (AlienVault) per: " + target);
+    HttpResponse av_resp = HttpClient::get(av_url, {}, 15);
+    if (av_resp.status_code == 200) {
+        try {
+            auto j = nlohmann::json::parse(av_resp.body);
+            if (j.contains("passive_dns")) {
+                for (const auto& item : j["passive_dns"]) {
+                    if (item.contains("hostname")) {
+                        std::string hostname = item["hostname"].get<std::string>();
+                        if (hostname.find(target) != std::string::npos && hostname != target) {
+                            unique_subs.insert(hostname);
+                        }
+                    }
+                }
+            }
+        } catch (...) {}
     }
 
     for (const auto& sub : unique_subs) {

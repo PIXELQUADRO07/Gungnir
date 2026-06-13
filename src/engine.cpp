@@ -5,6 +5,10 @@
 #include "nmap.hpp"
 #include "searchsploit.hpp"
 #include "report_gen.hpp"
+#include "socmint.hpp"
+#include "waf.hpp"
+#include "secrets.hpp"
+#include "ssl_geoip.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -131,6 +135,51 @@ public:
     bool run(Context& ctx) override { return e.run_breach(ctx.target); }
 };
 
+class SocmintModule : public Module {
+    Engine& e;
+public:
+    SocmintModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "socmint"; }
+    std::string help() const override { return "Search username on social networks"; }
+    bool run(Context& ctx) override { return e.run_socmint(ctx.target); }
+};
+
+class WafModule : public Module {
+    Engine& e;
+public:
+    WafModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "waf"; }
+    std::string help() const override { return "Detect Web Application Firewall"; }
+    bool run(Context& ctx) override { return e.run_waf(ctx.target); }
+};
+
+class SecretsModule : public Module {
+    Engine& e;
+public:
+    SecretsModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "secrets"; }
+    std::string help() const override { return "Scan JS files for leaked secrets"; }
+    bool run(Context& ctx) override { return e.run_secrets(ctx.target); }
+};
+
+class SslModule : public Module {
+    Engine& e;
+public:
+    SslModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "ssl"; }
+    std::string help() const override { return "Analyze SSL/TLS certificate"; }
+    bool run(Context& ctx) override { return e.run_ssl(ctx.target); }
+};
+
+class GeoIpModule : public Module {
+    Engine& e;
+public:
+    GeoIpModule(Engine& engine) : e(engine) {}
+    std::string name() const override { return "geoip"; }
+    std::string help() const override { return "Geolocate IP address"; }
+    bool run(Context& ctx) override { return e.run_geoip(ctx.target); }
+};
+
 class HistoryModule : public Module {
     Engine& e;
 public:
@@ -202,6 +251,11 @@ void Engine::register_modules() {
     registry_.register_module(std::make_unique<FuzzModule>(*this));
     registry_.register_module(std::make_unique<S3Module>(*this));
     registry_.register_module(std::make_unique<BreachModule>(*this));
+    registry_.register_module(std::make_unique<SocmintModule>(*this));
+    registry_.register_module(std::make_unique<WafModule>(*this));
+    registry_.register_module(std::make_unique<SecretsModule>(*this));
+    registry_.register_module(std::make_unique<SslModule>(*this));
+    registry_.register_module(std::make_unique<GeoIpModule>(*this));
     registry_.register_module(std::make_unique<HistoryModule>(*this));
     registry_.register_module(std::make_unique<GraphModule>(*this));
     registry_.register_module(std::make_unique<ReportModule>(*this));
@@ -513,6 +567,121 @@ bool Engine::run_breach(const std::string& target) {
     } else {
         Logger::info("Target is not an email. To check breaches, use a specific email address.");
     }
+    return true;
+}
+
+bool Engine::run_socmint(const std::string& username) {
+    if (username.empty()) {
+        Logger::error("Username cannot be empty for socmint search.");
+        return false;
+    }
+
+    const auto result = run_socmint_search(username);
+    
+    if (result.matches.empty()) {
+        Logger::info("No social media profiles found for username: " + username);
+    } else {
+        Logger::success("Found " + std::to_string(result.matches.size()) + " matches for '" + username + "':");
+        for (const auto& match : result.matches) {
+            std::cout << "  - \033[32m" << std::left << std::setw(15) << match.name << "\033[0m " << match.url << "\n";
+        }
+    }
+    return true;
+}
+
+bool Engine::run_waf(const std::string& target) {
+    if (target.empty()) {
+        Logger::error("Target cannot be empty for waf detection.");
+        return false;
+    }
+
+    const auto result = detect_waf(target);
+    
+    if (!result.found) {
+        Logger::info("No WAF detected for " + target);
+    } else {
+        Logger::success("WAF detected: \033[31;1m" + result.detected_waf + "\033[0m");
+        for (const auto& ev : result.evidence) {
+            std::cout << "  - " << ev << "\n";
+        }
+    }
+    return true;
+}
+
+bool Engine::run_secrets(const std::string& target) {
+    if (target.empty()) {
+        Logger::error("Target cannot be empty for secrets scan.");
+        return false;
+    }
+
+    const auto result = run_secrets_scan(target);
+    
+    if (result.matches.empty()) {
+        Logger::info("No secrets or API keys found for " + target);
+    } else {
+        Logger::success("Found " + std::to_string(result.matches.size()) + " potential secrets on " + target + "!");
+        for (const auto& m : result.matches) {
+            std::cout << "  - \033[31;1m" << std::left << std::setw(20) << m.type << "\033[0m " 
+                      << m.value << " \033[2m(" << m.source_url << ")\033[0m\n";
+        }
+    }
+    return true;
+}
+
+bool Engine::run_ssl(const std::string& target) {
+    if (target.empty()) {
+        Logger::error("Target cannot be empty for SSL analysis.");
+        return false;
+    }
+
+    Logger::info("SSL: Analyzing certificate for " + target + "...");
+    const auto result = get_ssl_info(target);
+    
+    if (!result.success) {
+        Logger::error("SSL: Failed to retrieve certificate for " + target);
+        return false;
+    }
+
+    Logger::success("SSL Certificate for " + target + ":");
+    std::cout << "  - \033[36mSubject:\033[0m    " << result.subject << "\n";
+    std::cout << "  - \033[36mIssuer:\033[0m     " << result.issuer << "\n";
+    std::cout << "  - \033[36mValid From:\033[0m " << result.valid_from << "\n";
+    std::cout << "  - \033[36mExpires:\033[0m    " << result.valid_until << "\n";
+    
+    if (!result.san.empty()) {
+        std::cout << "  - \033[36mSANs:\033[0m       ";
+        for (size_t i = 0; i < result.san.size(); ++i) {
+            std::cout << result.san[i] << (i == result.san.size() - 1 ? "" : ", ");
+        }
+        std::cout << "\n";
+    }
+    return true;
+}
+
+bool Engine::run_geoip(const std::string& ip) {
+    if (ip.empty()) {
+        Logger::error("IP cannot be empty for GeoIP lookup.");
+        return false;
+    }
+
+    Logger::info("GeoIP: Looking up " + ip + "...");
+    const auto result = get_geoip_info(ip);
+    
+    if (!result.success) {
+        Logger::error("GeoIP: Failed to lookup " + ip);
+        return false;
+    }
+
+    Logger::success("GeoIP Info for " + ip + ":");
+    std::cout << "  - \033[32mCountry:\033[0m   " << result.country << "\n";
+    std::cout << "  - \033[32mRegion:\033[0m    " << result.region << "\n";
+    std::cout << "  - \033[32mCity:\033[0m      " << result.city << "\n";
+    std::cout << "  - \033[32mISP:\033[0m       " << result.isp << "\n";
+    std::cout << "  - \033[32mTimezone:\033[0m  " << result.timezone << "\n";
+    std::cout << "  - \033[32mCoords:\033[0m    " << result.lat << ", " << result.lon << "\n";
+    
+    db().save_geoip(ip, result);
+
     return true;
 }
 

@@ -54,6 +54,11 @@ static void show_usage() {
         "    ./Gungnir scrape example.com\n"
         "    ./Gungnir campaign example.com -p 80,443\n"
         "    ./Gungnir threat example.com\n"
+        "    ./Gungnir socmint john_doe\n"
+        "    ./Gungnir waf example.com\n"
+        "    ./Gungnir secrets example.com\n"
+        "    ./Gungnir ssl example.com\n"
+        "    ./Gungnir geoip 8.8.8.8\n"
         "    ./Gungnir history\n"
         "    ./Gungnir history example.com\n"
         "    ./Gungnir graph -o out.json\n"
@@ -89,6 +94,11 @@ static const std::map<std::string, CmdInfo> COMMANDS = {
     {"fuzz",     {false, true }},
     {"s3",       {false, true }},
     {"breach",   {false, true }},
+    {"socmint",  {false, true }},
+    {"waf",      {false, true }},
+    {"secrets",  {false, true }},
+    {"ssl",      {false, true }},
+    {"geoip",    {false, true }},
 };
 
 // ─── legacy flag parsing ──────────────────────────────────────────────────────

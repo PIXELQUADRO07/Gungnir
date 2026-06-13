@@ -76,6 +76,24 @@ bool Database::init() {
             value TEXT,
             expires_at DATETIME
         );
+        CREATE TABLE IF NOT EXISTS ssl_info (
+            target TEXT PRIMARY KEY,
+            subject TEXT,
+            issuer TEXT,
+            valid_from TEXT,
+            valid_until TEXT,
+            scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS geoip_info (
+            ip TEXT PRIMARY KEY,
+            country TEXT,
+            region TEXT,
+            city TEXT,
+            isp TEXT,
+            lat REAL,
+            lon REAL,
+            scanned_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     )";
 
     char* err_msg = nullptr;
@@ -173,6 +191,38 @@ bool Database::save_service(const std::string& target, const ServiceInfo& s) {
     return ok;
 }
 
+bool Database::save_ssl(const std::string& target, const SslInfo& info) {
+    if (!db_handle || !info.success) return false;
+    const char* sql = "INSERT OR REPLACE INTO ssl_info (target, subject, issuer, valid_from, valid_until) VALUES (?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_handle, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, target.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, info.subject.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, info.issuer.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, info.valid_from.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, info.valid_until.c_str(), -1, SQLITE_TRANSIENT);
+    bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
+bool Database::save_geoip(const std::string& ip, const GeoIpInfo& info) {
+    if (!db_handle || !info.success) return false;
+    const char* sql = "INSERT OR REPLACE INTO geoip_info (ip, country, region, city, isp, lat, lon) VALUES (?, ?, ?, ?, ?, ?, ?);";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_handle, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+    sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, info.country.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, info.region.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, info.city.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 5, info.isp.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_double(stmt, 6, info.lat);
+    sqlite3_bind_double(stmt, 7, info.lon);
+    bool ok = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return ok;
+}
+
 // ─── get_history ──────────────────────────────────────────────────────────────
 
 std::vector<HistoryEntry> Database::get_history(const std::string& target) {
@@ -243,6 +293,47 @@ std::vector<ServiceInfo> Database::get_services(const std::string& target) {
     }
     sqlite3_finalize(stmt);
     return services;
+}
+
+SslInfo Database::get_ssl(const std::string& target) {
+    SslInfo info;
+    if (!db_handle) return info;
+    const char* sql = "SELECT subject, issuer, valid_from, valid_until FROM ssl_info WHERE target = ?;";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_handle, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, target.c_str(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            info.success = true;
+            info.subject = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            info.issuer = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            info.valid_from = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+            info.valid_until = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        }
+        sqlite3_finalize(stmt);
+    }
+    return info;
+}
+
+GeoIpInfo Database::get_geoip(const std::string& ip) {
+    GeoIpInfo info;
+    info.ip = ip;
+    if (!db_handle) return info;
+    const char* sql = "SELECT country, region, city, isp, lat, lon FROM geoip_info WHERE ip = ?;";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(db_handle, sql, -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, ip.c_str(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            info.success = true;
+            info.country = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+            info.region = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1));
+            info.city = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2));
+            info.isp = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+            info.lat = sqlite3_column_double(stmt, 4);
+            info.lon = sqlite3_column_double(stmt, 5);
+        }
+        sqlite3_finalize(stmt);
+    }
+    return info;
 }
 
 // ─── export_graph_json ────────────────────────────────────────────────────────
