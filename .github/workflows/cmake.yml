@@ -3,6 +3,7 @@ name: C++ CMake Build
 on:
   push:
     branches: [ main, master ]
+
   pull_request:
     branches: [ main, master ]
 
@@ -11,18 +12,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libcurl4-openssl-dev libsqlite3-dev libreadline-dev nmap exploitdb
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
 
-    - name: Configure CMake
-      run: cmake -B ${{github.workspace}}/build -DCMAKE_BUILD_TYPE=Release
+          sudo apt-get install -y \
+            libcurl4-openssl-dev \
+            libsqlite3-dev \
+            libreadline-dev \
+            nmap
 
-    - name: Build
-      run: cmake --build ${{github.workspace}}/build --config Release
+          if command -v searchsploit >/dev/null 2>&1; then
+            echo "searchsploit disponibile"
+          else
+            echo "searchsploit non installato (opzionale)"
+          fi
 
-    - name: Test
-      run: cd ${{github.workspace}}/build && ctest --output-on-failure
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build -j$(nproc)
+
+      - name: Test
+        run: |
+          cd build
+          ctest --output-on-failure
