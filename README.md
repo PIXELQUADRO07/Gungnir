@@ -1,103 +1,162 @@
+<div align="center">
+
+<img src="Gungnir.png" width="220"/>
+
 # Gungnir
 
-![Gungnir Logo](Gungnir.png)
+### Fast • Modular • Local-first OSINT Framework written in C++20
 
-**Gungnir** is a fast, modular OSINT framework written in **C++20**.
-It provides port scanning, DNS and WHOIS reconnaissance, command-line subcommands, and an interactive shell for iterative investigation.
+![Build](https://img.shields.io/github/actions/workflow/status/YOUR_USER/Gungnir/cmake.yml)
+![License](https://img.shields.io/github/license/YOUR_USER/Gungnir)
+![Stars](https://img.shields.io/github/stars/YOUR_USER/Gungnir)
 
-## 🚀 Highlights
+Recon • Scan • Threat Intel • Reports
 
-- Native TCP scanner with fixed worker thread pool
-- Flexible port selection via `-p`
-- DNS lookup module for A, AAAA, NS, MX, TXT, SOA, and CNAME
-- WHOIS resolution with referral chasing through IANA, registry, and registrar servers
-- HTML and JSON report generation
-- Integration with Nmap and Searchsploit
-- Interactive shell with module context, history support, and command registry
-- SQLite3 persistence for all scan results
+</div>
 
-## 📦 Build & Install
+---
 
-### Dependencies
+## Overview
 
-- **C++20** compiler (GCC 10+ or Clang 10+)
-- **CMake** 3.15+
-- **libcurl**
-- **sqlite3**
-- **readline** (optional, for shell history)
-- **nmap** (optional, for service detection)
-- **exploitdb** (optional, for searchsploit)
+Gungnir is a modular OSINT framework built in modern C++.
 
-On Debian/Ubuntu, you can use the provided setup script:
+It combines reconnaissance, network scanning, service discovery, threat intelligence, and reporting into a single interactive CLI.
+
+Designed for:
+
+* Speed
+* Modularity
+* Local-first workflows
+* Interactive investigation
+
+---
+
+## Features
+
+* Multi-threaded TCP scanning
+* DNS Recon
+* WHOIS lookup
+* Nmap integration
+* Searchsploit integration
+* Threat Intelligence
+* HTML & JSON reports
+* Interactive shell
+* SQLite persistence
+* Docker support
+* Multi-target workflows
+
+---
+
+## Demo
+
+```bash
+./Gungnir
+
+Gungnir > scan example.com
+Gungnir > dns example.com
+Gungnir > nmap example.com
+Gungnir > report example.com
+```
+
+*(add GIF later)*
+
+---
+
+## Architecture
+
+```text
+Target
+↓
+Recon
+↓
+Scan
+↓
+Nmap
+↓
+Threat Intel
+↓
+Searchsploit
+↓
+Report
+```
+
+---
+
+## Quick Start
+
+Build:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+Run:
+
+```bash
+./build/Gungnir
+```
+
+---
+
+## Dependencies
+
+Required:
+
+* C++20
+* CMake
+* libcurl
+* sqlite3
+
+Optional:
+
+* readline
+* nmap
+* searchsploit
+
+Install:
 
 ```bash
 sudo ./setup.sh
 ```
 
-### Compilation
+---
 
-```bash
-cmake -B build
-cmake --build build
-```
-
-### Installation
-
-```bash
-sudo cmake --install build
-```
-
-## ⚙️ Configuration
-
-Gungnir looks for a configuration file at `~/.gungnir.conf`. Example format:
+## Configuration
 
 ```ini
-VT_API_KEY     = your_virustotal_key
-SHODAN_API_KEY = your_shodan_key
+VT_API_KEY=...
+SHODAN_API_KEY=...
 ```
 
-## 💡 Usage
+---
 
-### Direct subcommand style
+## Commands
 
-```bash
-./Gungnir scan   example.com
-./Gungnir nmap   example.com -p 80,443
-./Gungnir dns    example.com
-./Gungnir report example.com -o report.html
-./Gungnir searchsploit "apache 2.4"
-```
+| Command | Description       |
+| ------- | ----------------- |
+| scan    | Fast TCP scan     |
+| dns     | DNS lookup        |
+| whois   | WHOIS lookup      |
+| nmap    | Service detection |
+| threat  | Threat intel      |
+| report  | Generate reports  |
+| history | Scan history      |
+| graph   | Export graph      |
 
-### Interactive shell
+---
 
-Start the shell with no arguments:
+## Roadmap
 
-```bash
-./Gungnir
-```
+* [x] Interactive CLI
+* [x] Reports
+* [x] Docker
+* [x] Multi-target
+* [ ] Plugin system
+* [ ] Distributed execution
 
-## 🧭 Commands
+---
 
-| Command | Description |
-|---------|-------------|
-| `scan <target>` | Fast TCP port scan |
-| `nmap <target>` | Nmap service detection (requires nmap) |
-| `dns <target>` | Perform DNS lookup |
-| `whois <target>`| Perform WHOIS lookup |
-| `threat <target>`| Threat Intel (requires API keys) |
-| `report <target>`| Generate HTML/JSON report |
-| `history` | Show scan history |
-| `graph` | Export JSON graph for visualization |
+## License
 
-## 🛠 Developer Guide
-
-### Adding a Module
-
-1. Create your module implementation in `modules/`.
-2. Inherit from the `Module` class (see `src/module.hpp`).
-3. Register your module in `src/engine.cpp`.
-4. Add your `.cpp` file to `CMakeLists.txt`.
-
-## 📜 License
-
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+MIT
