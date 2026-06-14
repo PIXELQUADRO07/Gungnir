@@ -16,6 +16,7 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 
 // ─── modules ──────────────────────────────────────────────────────────────────
@@ -215,7 +216,9 @@ public:
     std::string name() const override { return "graph"; }
     std::string help() const override { return "Export graph"; }
     bool run(Context& ctx) override {
-        const std::string out = ctx.output_file.empty() ? "graph.json" : ctx.output_file;
+        const std::string out = ctx.output_file.empty()
+            ? ctx.workspace.root() + "/graph.json"
+            : ctx.output_file;
         return ctx.db.export_graph_json(out);
     }
 };
@@ -231,8 +234,9 @@ public:
         std::string out = ctx.output_file;
 
         if (out.empty()) {
-            out = "report_" + ctx.target + ".html";
-        } else if (out.find(".json") != std::string::npos) {
+            const std::string base = ctx.target.empty() ? "report_all" : "report_" + ctx.target;
+            out = ctx.workspace.exports_dir() + "/" + base + ".html";
+        } else if (out.size() >= 5 && out.compare(out.size() - 5, 5, ".json") == 0) {
             format = ReportGen::Format::JSON;
         }
         
@@ -297,7 +301,8 @@ bool Engine::execute(
             ports,
             output_file,
             db(),
-            Config::instance()
+            Config::instance(),
+            workspace()
         };
         return registry_.execute(mode, ctx);
     }
@@ -315,7 +320,8 @@ bool Engine::execute(
             ports,
             output_file,
             db(),
-            Config::instance()
+            Config::instance(),
+            workspace()
         };
         
         if (!registry_.execute(mode, ctx)) {
@@ -452,14 +458,69 @@ bool Engine::run_campaign(const std::string& target, const std::vector<int>& por
     return true;
 }
 
+// ─── DNS result <-> JSON (for caching) ────────────────────────────────────────
+
+namespace {
+
+json dns_result_to_json(const DnsResult& r) {
+    json j;
+    j["target"]  = r.target;
+    j["success"] = r.success;
+
+    json records = json::array();
+    for (const auto& rec : r.records) {
+        json je;
+        je["type"]     = rec.type;
+        je["value"]    = rec.value;
+        je["priority"] = rec.priority;
+        records.push_back(je);
+    }
+    j["records"] = records;
+    j["subdomains"] = r.subdomains;
+    return j;
+}
+
+// Returns std::nullopt if `j` doesn't look like a DnsResult we wrote
+// ourselves (e.g. a stale/incompatible cache entry from an older version).
+std::optional<DnsResult> dns_result_from_json(const json& j) {
+    if (!j.is_object() || !j.contains("records") || !j.contains("subdomains"))
+        return std::nullopt;
+
+    DnsResult r;
+    r.target  = j.value("target", "");
+    r.success = j.value("success", false);
+
+    for (const auto& je : j["records"]) {
+        DnsRecord rec;
+        rec.type     = je.value("type", "");
+        rec.value    = je.value("value", "");
+        rec.priority = je.value("priority", -1);
+        r.records.push_back(rec);
+    }
+    for (const auto& sub : j["subdomains"])
+        r.subdomains.push_back(sub.get<std::string>());
+
+    return r;
+}
+
+}  // namespace
+
 bool Engine::run_dns(const std::string& target, const std::string& output_file) {
-    // Check cache
-    std::string cached = db().cache_get("dns:" + target);
+    // Cache hit: skip the (slow, network-bound) lookup entirely and reuse
+    // the previously-saved result.
+    const std::string cache_key = "dns:" + target;
+    const std::string cached     = db().cache_get(cache_key);
     if (!cached.empty()) {
-        Logger::info("DNS cache hit for " + target);
-        // Simplified: we could parse JSON and return DnsResult, 
-        // but for now let's just show it works.
-        // In a real impl, we'd parse and return.
+        try {
+            if (auto result = dns_result_from_json(json::parse(cached))) {
+                Logger::info("DNS cache hit for " + target);
+                print_dns_result(*result);
+                if (!output_file.empty()) return dump_dns_result(*result, output_file);
+                return result->success;
+            }
+        } catch (const json::exception&) {
+            // Malformed/stale cache entry — fall through to a fresh lookup.
+        }
     }
 
     Logger::info("DNS lookup: " + target);
@@ -469,9 +530,10 @@ bool Engine::run_dns(const std::string& target, const std::string& output_file) 
         std::chrono::steady_clock::now() - t0).count();
 
     db().save_dns(target, result);
-    
-    // Save to cache (1 hour)
-    db().cache_set("dns:" + target, "{\"status\":\"ok\"}", 3600);
+
+    // Cache the full result for 1 hour so repeated lookups (e.g. during a
+    // campaign) don't re-hit the network/DNS resolver.
+    db().cache_set(cache_key, dns_result_to_json(result).dump(), 3600);
 
     Logger::info("DNS lookup completed in " + std::to_string(elapsed) + " ms");
     print_dns_result(result);
@@ -676,6 +738,9 @@ bool Engine::run_ssl(const std::string& target) {
         }
         std::cout << "\n";
     }
+
+    db().save_ssl(target, result);
+
     return true;
 }
 
@@ -980,7 +1045,9 @@ bool Engine::run_nmap(
                 si.protocol = p.protocol;
                 si.service = p.service;
                 si.product = p.product;
-                si.version = p.version;
+                si.version = p.extrainfo.empty()
+                    ? p.version
+                    : p.version + " " + p.extrainfo;
                 si.cpe = p.cpe;
                 db().save_service(host.ip, si);
             }
@@ -1039,13 +1106,19 @@ void Engine::print_nmap_result(const NmapResult& result) const {
                 (p.state == "open")     ? GREEN  :
                 (p.state == "filtered") ? YELLOW : DIM;
 
+            // Combine product/version/extrainfo into one display string,
+            // e.g. "Apache httpd 2.4.41 (Ubuntu)". Any of these may be empty.
+            std::string info = p.product;
+            if (!p.version.empty())   info += (info.empty() ? "" : " ") + p.version;
+            if (!p.extrainfo.empty()) info += (info.empty() ? "" : " ") + p.extrainfo;
+
             std::cout
                 << "  "
                 << CYAN  << std::left << std::setw(8)  << p.port   << RESET
                 << DIM   << std::left << std::setw(10) << p.protocol << RESET
                 << state_col << std::left << std::setw(12) << p.state << RESET
                 << std::left << std::setw(16) << p.service
-                << DIM << p.version << RESET
+                << DIM << info << RESET
                 << "\n";
         }
     }
@@ -1070,7 +1143,10 @@ bool Engine::dump_nmap_result(const NmapResult& result, const std::string& path)
             pe["protocol"] = p.protocol;
             pe["state"]    = p.state;
             pe["service"]  = p.service;
+            pe["product"]  = p.product;
             pe["version"]  = p.version;
+            pe["extrainfo"]= p.extrainfo;
+            pe["cpe"]      = p.cpe;
             ports_arr.push_back(pe);
         }
         h["ports"] = ports_arr;

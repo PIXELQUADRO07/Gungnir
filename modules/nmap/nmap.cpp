@@ -6,7 +6,7 @@
 #include <cstring>
 #include <sstream>
 #include <algorithm>
-#include <map>
+#include <regex>
 
 // ─── subprocess helper ────────────────────────────────────────────────────────
 
@@ -25,125 +25,102 @@ std::string run_command(const std::string& cmd) {
     return output;
 }
 
-// Trims leading and trailing whitespace in-place.
-std::string trim(const std::string& s) {
-    const auto b = s.find_first_not_of(" \t\r\n");
-    if (b == std::string::npos) return {};
-    const auto e = s.find_last_not_of(" \t\r\n");
-    return s.substr(b, e - b + 1);
+// Decodes the handful of XML entities nmap emits in attribute values.
+std::string xml_unescape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ) {
+        if (s[i] == '&') {
+            if (s.compare(i, 5, "&amp;")  == 0) { out += '&';  i += 5; continue; }
+            if (s.compare(i, 4, "&lt;")   == 0) { out += '<';  i += 4; continue; }
+            if (s.compare(i, 4, "&gt;")   == 0) { out += '>';  i += 4; continue; }
+            if (s.compare(i, 6, "&quot;") == 0) { out += '"';  i += 6; continue; }
+            if (s.compare(i, 6, "&apos;") == 0) { out += '\''; i += 6; continue; }
+        }
+        out += s[i++];
+    }
+    return out;
 }
 
-// ─── grepable output parser ───────────────────────────────────────────────────
-//
-// nmap -oG - produces lines like:
-//   Host: 93.184.216.34 (example.com)  Status: Up
-//   Host: 93.184.216.34 (example.com)  Ports: 80/open/tcp//http//Apache/, 443/open/tcp//https//
-//   OS: Linux 4.x
-//
-// We parse these into NmapHost entries.
+// Extracts the value of attribute `name="..."` from a fragment of XML
+// attributes (e.g. the inside of a <service ...> tag). Returns "" if absent.
+std::string xml_attr(const std::string& attrs, const std::string& name) {
+    const std::regex re(name + "=\"([^\"]*)\"");
+    std::smatch m;
+    if (std::regex_search(attrs, m, re)) return xml_unescape(m[1].str());
+    return "";
+}
 
-NmapResult parse_grepable(const std::string& raw) {
+// ─── XML output parser ────────────────────────────────────────────────────────
+//
+// nmap -oX - emits a <host> element per host, containing <address>,
+// <hostnames>, an <os> block with <osmatch> guesses, and a <ports> block
+// with one <port> element per scanned port. Each <port> has a <state> and
+// a <service> element (which carries name/product/version/extrainfo and,
+// when nmap could determine one, a nested <cpe> element).
+//
+// This is a lightweight regex-based extraction rather than a full XML
+// parser. It is tolerant of attribute order and self-closing tags, but
+// assumes nmap's own (well-formed, predictable) output — it is not a
+// general-purpose XML parser.
+
+NmapResult parse_xml(const std::string& raw) {
     NmapResult result;
     result.raw = raw;
 
-    std::istringstream ss(raw);
-    std::string line;
+    const std::regex host_re("<host>([\\s\\S]*?)</host>");
+    const std::regex addr_re("<address addr=\"([^\"]+)\" addrtype=\"ip");
+    const std::regex hostname_re("<hostname name=\"([^\"]+)\"");
+    const std::regex osmatch_re("<osmatch name=\"([^\"]+)\"");
+    const std::regex port_re("<port protocol=\"([^\"]+)\" portid=\"(\\d+)\">([\\s\\S]*?)</port>");
+    const std::regex state_re("<state state=\"([^\"]+)\"");
+    const std::regex service_re("<service([\\s\\S]*?)(?:/>|>)");
+    const std::regex cpe_re("<cpe>([^<]+)</cpe>");
 
-    // map ip → host (accumulate ports across lines)
-    std::map<std::string, NmapHost> hosts_map;
-    std::vector<std::string>        host_order;   // preserve insertion order
+    for (auto it = std::sregex_iterator(raw.begin(), raw.end(), host_re);
+         it != std::sregex_iterator(); ++it) {
+        const std::string hblock = (*it)[1].str();
 
-    while (std::getline(ss, line)) {
-        if (line.empty() || line[0] == '#') continue;
+        NmapHost host;
+        std::smatch m;
 
-        // ── Host line ─────────────────────────────────────────────────────────
-        if (line.rfind("Host:", 0) == 0) {
-            // "Host: <ip> (<hostname>)  Status: ..."
-            std::istringstream ls(line);
-            std::string token;
-            ls >> token;        // "Host:"
-            std::string ip;
-            ls >> ip;           // "93.184.216.34"
+        if (std::regex_search(hblock, m, addr_re))
+            host.ip = m[1].str();
+        if (host.ip.empty()) continue;  // host down / no address
 
-            std::string hostname;
-            std::string rest;
-            std::getline(ls, rest);
-            auto lp = rest.find('(');
-            auto rp = rest.find(')');
-            if (lp != std::string::npos && rp != std::string::npos && rp > lp)
-                hostname = rest.substr(lp + 1, rp - lp - 1);
+        if (std::regex_search(hblock, m, hostname_re))
+            host.hostname = xml_unescape(m[1].str());
 
-            if (hosts_map.find(ip) == hosts_map.end()) {
-                NmapHost h;
-                h.ip       = ip;
-                h.hostname = hostname;
-                hosts_map[ip] = h;
-                host_order.push_back(ip);
+        if (std::regex_search(hblock, m, osmatch_re))
+            host.os_guess = xml_unescape(m[1].str());
+
+        for (auto pit = std::sregex_iterator(hblock.begin(), hblock.end(), port_re);
+             pit != std::sregex_iterator(); ++pit) {
+            NmapPort port;
+            port.protocol = (*pit)[1].str();
+            try { port.port = std::stoi((*pit)[2].str()); } catch (...) { continue; }
+
+            const std::string pblock = (*pit)[3].str();
+
+            if (std::regex_search(pblock, m, state_re))
+                port.state = m[1].str();
+
+            if (std::regex_search(pblock, m, service_re)) {
+                const std::string svc_attrs = m[1].str();
+                port.service   = xml_attr(svc_attrs, "name");
+                port.product   = xml_attr(svc_attrs, "product");
+                port.version   = xml_attr(svc_attrs, "version");
+                port.extrainfo = xml_attr(svc_attrs, "extrainfo");
             }
-            continue;
+
+            if (std::regex_search(pblock, m, cpe_re))
+                port.cpe = xml_unescape(m[1].str());
+
+            host.ports.push_back(port);
         }
 
-        // ── Ports line ────────────────────────────────────────────────────────
-        // "Host: <ip> (<host>)  Ports: 80/open/tcp//http//Apache HTTPd/, 443/open/tcp//https//"
-        if (line.find("\tPorts:") != std::string::npos ||
-            line.find(" Ports:") != std::string::npos) {
-
-            // Extract IP from start of line (same format as Host line)
-            std::istringstream ls(line);
-            std::string tok;
-            ls >> tok;           // "Host:"
-            std::string ip;
-            ls >> ip;
-
-            // Find "Ports:" section
-            auto ports_pos = line.find("Ports:");
-            if (ports_pos == std::string::npos) continue;
-            std::string ports_str = line.substr(ports_pos + 6);
-
-            // Split by ", "
-            std::istringstream ps(ports_str);
-            std::string entry;
-            while (std::getline(ps, entry, ',')) {
-                entry = trim(entry);
-                if (entry.empty()) continue;
-
-                // Format: port/state/proto//service//version/
-                // Fields separated by '/'
-                std::vector<std::string> fields;
-                std::istringstream fs(entry);
-                std::string field;
-                while (std::getline(fs, field, '/'))
-                    fields.push_back(field);
-
-                // fields[0]=port [1]=state [2]=proto [3]=? [4]=service [5]=? [6]=version
-                if (fields.size() < 3) continue;
-
-                NmapPort np;
-                try { np.port = std::stoi(fields[0]); } catch (...) { continue; }
-                np.state    = fields.size() > 1 ? trim(fields[1]) : "";
-                np.protocol = fields.size() > 2 ? trim(fields[2]) : "";
-                np.service  = fields.size() > 4 ? trim(fields[4]) : "";
-                np.version  = fields.size() > 6 ? trim(fields[6]) : "";
-
-                if (hosts_map.find(ip) != hosts_map.end())
-                    hosts_map[ip].ports.push_back(np);
-            }
-            continue;
-        }
-
-        // ── OS line ───────────────────────────────────────────────────────────
-        if (line.rfind("OS:", 0) == 0) {
-            // "OS: Linux 4.x"  — attribute to last host seen
-            if (!host_order.empty()) {
-                std::string os = trim(line.substr(3));
-                hosts_map[host_order.back()].os_guess = os;
-            }
-            continue;
-        }
+        result.hosts.push_back(host);
     }
-
-    for (const auto& ip : host_order)
-        result.hosts.push_back(hosts_map[ip]);
 
     result.success = !result.hosts.empty();
     return result;
@@ -176,12 +153,14 @@ NmapResult nmap_scan(
 
     // Build command:
     //   nmap -sV           — service/version detection
-    //        -oG -          — grepable output to stdout (we parse this)
+    //        -oX -          — XML output to stdout (we parse this; XML
+    //                         carries product/version/extrainfo/cpe, which
+    //                         the old grepable (-oG) format did not)
     //        -p <ports>     — if ports specified
     //        <extra_args>   — user-supplied flags (e.g. -sU, -A, --script)
     //        <target>
     std::ostringstream cmd;
-    cmd << nmap_path << " -sV -oG -";
+    cmd << nmap_path << " -sV -oX -";
 
     if (!ports.empty()) {
         cmd << " -p ";
@@ -194,7 +173,11 @@ NmapResult nmap_scan(
     for (const auto& arg : extra_args)
         cmd << " " << arg;
 
-    cmd << " " << target << " 2>&1";
+    // Send stderr to /dev/null rather than merging it into stdout: with
+    // -oX the parser expects well-formed XML on stdout, and interleaved
+    // progress/diagnostic lines from stderr could land inside a <host>
+    // block and break the regex-based extraction below.
+    cmd << " " << target << " 2>/dev/null";
 
     Logger::info("Running: " + cmd.str());
 
@@ -205,8 +188,7 @@ NmapResult nmap_scan(
         return r;
     }
 
-    NmapResult result = parse_grepable(raw);
-    result.raw = raw;
+    NmapResult result = parse_xml(raw);
 
     if (!result.success && result.error.empty())
         result.error = "No hosts found or all ports filtered.";

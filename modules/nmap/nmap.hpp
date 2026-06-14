@@ -12,6 +12,7 @@ struct NmapPort {
     std::string service;    // e.g. "http", "ssh"
     std::string product;
     std::string version;    // banner / version string if detected
+    std::string extrainfo;  // e.g. "(Ubuntu)", "protocol 2.0"
     std::string cpe;
 };
 

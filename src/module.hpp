@@ -8,6 +8,7 @@
 #include "database.hpp"
 #include "config.hpp"
 #include "logger.hpp"
+#include "workspace.hpp"
 
 struct Context {
     std::string target;
@@ -15,6 +16,7 @@ struct Context {
     std::string output_file;
     Database& db;
     Config& config;
+    Workspace& workspace;
     // Logger è statico ma potremmo volerlo passare se volessimo logger diversi
 };
 

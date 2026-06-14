@@ -1,22 +1,52 @@
 #include "report_gen.hpp"
 #include "logger.hpp"
+#include "json.hpp"
 #include <fstream>
 #include <sstream>
 #include <iomanip>
 
+using json = nlohmann::json;
+
 namespace ReportGen {
+
+namespace {
+
+// Escapes the handful of characters that are unsafe to drop verbatim into
+// HTML text/attribute context. All target/service/banner strings come from
+// scan results (i.e. untrusted input from the network), so this matters —
+// without it a malicious banner like "<script>..." would be rendered as-is.
+std::string html_escape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        switch (c) {
+            case '&':  out += "&amp;";  break;
+            case '<':  out += "&lt;";   break;
+            case '>':  out += "&gt;";   break;
+            case '"':  out += "&quot;"; break;
+            case '\'': out += "&#39;";  break;
+            default:   out += c;        break;
+        }
+    }
+    return out;
+}
+
+}  // namespace
 
 bool generate_html(const std::string& target, const std::string& path, Database& db) {
     std::ofstream out(path);
     if (!out.is_open()) return false;
 
-    auto history = db.get_history(target);
+    auto history  = db.get_history(target);
     auto services = db.get_services(target);
-    auto ssl = db.get_ssl(target);
-    auto geo = db.get_geoip(target);
+    auto ssl       = db.get_ssl(target);
+    auto geo       = db.get_geoip(target);
+
+    const std::string target_esc = html_escape(target);
 
     out << "<!DOCTYPE html>\n<html>\n<head>\n";
-    out << "<title>Gungnir Report - " << target << "</title>\n";
+    out << "<meta charset=\"utf-8\">\n";
+    out << "<title>Gungnir Report - " << target_esc << "</title>\n";
     out << "<style>\n"
         << "body { font-family: sans-serif; margin: 40px; background: #f4f4f9; color: #333; }\n"
         << "h1 { color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; }\n"
@@ -29,15 +59,15 @@ bool generate_html(const std::string& target, const std::string& path, Database&
         << "</style>\n</head>\n<body>\n";
 
     out << "<h1>Gungnir OSINT Report</h1>\n";
-    out << "<p><strong>Target:</strong> " << target << "</p>\n";
+    out << "<p><strong>Target:</strong> " << target_esc << "</p>\n";
 
     if (geo.success) {
         out << "<h2>GeoIP Information</h2>\n";
         out << "<table>\n"
-            << "<tr><th>Country</th><td>" << geo.country << "</td></tr>\n"
-            << "<tr><th>Region</th><td>" << geo.region << "</td></tr>\n"
-            << "<tr><th>City</th><td>" << geo.city << "</td></tr>\n"
-            << "<tr><th>ISP</th><td>" << geo.isp << "</td></tr>\n"
+            << "<tr><th>Country</th><td>" << html_escape(geo.country) << "</td></tr>\n"
+            << "<tr><th>Region</th><td>" << html_escape(geo.region) << "</td></tr>\n"
+            << "<tr><th>City</th><td>" << html_escape(geo.city) << "</td></tr>\n"
+            << "<tr><th>ISP</th><td>" << html_escape(geo.isp) << "</td></tr>\n"
             << "<tr><th>Coordinates</th><td>" << geo.lat << ", " << geo.lon << "</td></tr>\n"
             << "</table>\n";
     }
@@ -45,10 +75,10 @@ bool generate_html(const std::string& target, const std::string& path, Database&
     if (ssl.success) {
         out << "<h2>SSL Certificate</h2>\n";
         out << "<table>\n"
-            << "<tr><th>Subject</th><td>" << ssl.subject << "</td></tr>\n"
-            << "<tr><th>Issuer</th><td>" << ssl.issuer << "</td></tr>\n"
-            << "<tr><th>Valid From</th><td>" << ssl.valid_from << "</td></tr>\n"
-            << "<tr><th>Valid Until</th><td>" << ssl.valid_until << "</td></tr>\n"
+            << "<tr><th>Subject</th><td>" << html_escape(ssl.subject) << "</td></tr>\n"
+            << "<tr><th>Issuer</th><td>" << html_escape(ssl.issuer) << "</td></tr>\n"
+            << "<tr><th>Valid From</th><td>" << html_escape(ssl.valid_from) << "</td></tr>\n"
+            << "<tr><th>Valid Until</th><td>" << html_escape(ssl.valid_until) << "</td></tr>\n"
             << "</table>\n";
     }
 
@@ -56,10 +86,11 @@ bool generate_html(const std::string& target, const std::string& path, Database&
     if (services.empty()) {
         out << "<p>No service information found.</p>\n";
     } else {
-        out << "<table>\n<tr><th>Port</th><th>Proto</th><th>Service</th><th>Product</th><th>Version</th></tr>\n";
+        out << "<table>\n<tr><th>Port</th><th>Proto</th><th>Service</th><th>Product</th><th>Version</th><th>CPE</th></tr>\n";
         for (const auto& s : services) {
-            out << "<tr><td>" << s.port << "</td><td>" << s.protocol << "</td><td>" << s.service 
-                << "</td><td>" << s.product << "</td><td>" << s.version << "</td></tr>\n";
+            out << "<tr><td>" << s.port << "</td><td>" << html_escape(s.protocol) << "</td><td>" << html_escape(s.service)
+                << "</td><td>" << html_escape(s.product) << "</td><td>" << html_escape(s.version)
+                << "</td><td>" << html_escape(s.cpe) << "</td></tr>\n";
         }
         out << "</table>\n";
     }
@@ -70,7 +101,7 @@ bool generate_html(const std::string& target, const std::string& path, Database&
     } else {
         out << "<table>\n<tr><th>Date</th><th>Ports found</th></tr>\n";
         for (const auto& h : history) {
-            out << "<tr><td>" << h.timestamp << "</td><td>";
+            out << "<tr><td>" << html_escape(h.timestamp) << "</td><td>";
             for (size_t i = 0; i < h.ports.size(); ++i) {
                 out << h.ports[i] << (i == h.ports.size() - 1 ? "" : ", ");
             }
@@ -89,37 +120,58 @@ bool generate_json(const std::string& target, const std::string& path, Database&
     std::ofstream out(path);
     if (!out.is_open()) return false;
 
-    auto history = db.get_history(target);
+    auto history  = db.get_history(target);
     auto services = db.get_services(target);
+    auto ssl       = db.get_ssl(target);
+    auto geo       = db.get_geoip(target);
 
-    out << "{\n  \"target\": \"" << target << "\",\n";
-    
-    out << "  \"services\": [\n";
-    for (size_t i = 0; i < services.size(); ++i) {
-        const auto& s = services[i];
-        out << "    {\n"
-            << "      \"port\": " << s.port << ",\n"
-            << "      \"protocol\": \"" << s.protocol << "\",\n"
-            << "      \"service\": \"" << s.service << "\",\n"
-            << "      \"product\": \"" << s.product << "\",\n"
-            << "      \"version\": \"" << s.version << "\"\n"
-            << "    }" << (i == services.size() - 1 ? "" : ",") << "\n";
+    json j;
+    j["target"] = target;
+
+    json services_arr = json::array();
+    for (const auto& s : services) {
+        json se;
+        se["port"]     = s.port;
+        se["protocol"] = s.protocol;
+        se["service"]  = s.service;
+        se["product"]  = s.product;
+        se["version"]  = s.version;
+        se["banner"]   = s.banner;
+        se["cpe"]      = s.cpe;
+        services_arr.push_back(se);
     }
-    out << "  ],\n";
+    j["services"] = services_arr;
 
-    out << "  \"history\": [\n";
-    for (size_t i = 0; i < history.size(); ++i) {
-        const auto& h = history[i];
-        out << "    {\n"
-            << "      \"timestamp\": \"" << h.timestamp << "\",\n"
-            << "      \"ports\": [";
-        for (size_t j = 0; j < h.ports.size(); ++j) {
-            out << h.ports[j] << (j == h.ports.size() - 1 ? "" : ", ");
-        }
-        out << "]\n    }" << (i == history.size() - 1 ? "" : ",") << "\n";
+    if (ssl.success) {
+        j["ssl"] = {
+            {"subject",     ssl.subject},
+            {"issuer",      ssl.issuer},
+            {"valid_from",  ssl.valid_from},
+            {"valid_until", ssl.valid_until},
+        };
     }
-    out << "  ]\n}\n";
 
+    if (geo.success) {
+        j["geoip"] = {
+            {"country", geo.country},
+            {"region",  geo.region},
+            {"city",    geo.city},
+            {"isp",     geo.isp},
+            {"lat",     geo.lat},
+            {"lon",     geo.lon},
+        };
+    }
+
+    json history_arr = json::array();
+    for (const auto& h : history) {
+        json he;
+        he["timestamp"] = h.timestamp;
+        he["ports"]     = h.ports;
+        history_arr.push_back(he);
+    }
+    j["history"] = history_arr;
+
+    out << j.dump(2) << "\n";
     return true;
 }
 

@@ -43,13 +43,13 @@ Shell::Shell() {
                 }
             } else if (sub == "create" && args.size() > 2) {
                 engine_.set_workspace(Workspace::create(args[2]));
-                current_workspace_ = args[2];
+                current_workspace_ = engine_.workspace().name();
                 Logger::success("Workspace creato e caricato: " + current_workspace_);
             } else if (sub == "load" && args.size() > 2) {
                 auto ws = Workspace::load(args[2]);
                 if (ws) {
                     engine_.set_workspace(std::move(ws));
-                    current_workspace_ = args[2];
+                    current_workspace_ = engine_.workspace().name();
                     Logger::success("Workspace caricato: " + current_workspace_);
                 }
             } else {

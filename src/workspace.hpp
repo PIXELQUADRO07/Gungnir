@@ -27,6 +27,11 @@ private:
     std::unique_ptr<Database> db_;
 
     static void ensure_dir(const std::string& path);
+
+    // Replaces characters that are unsafe as a single path component
+    // (/, \, and any leading run of '.') with '_', so a workspace name
+    // like "../../etc" can't escape ~/.gungnir/workspaces/.
+    static std::string sanitize_name(const std::string& name);
 };
 
 #endif
