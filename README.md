@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Gungnir.png" width="400" alt="Gungnir Logo"/>
+<img src="Gungnir.png" width="600" alt="Gungnir Logo"/>
 
 # ⚔️ Gungnir
 
