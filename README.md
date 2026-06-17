@@ -382,7 +382,7 @@ copies or substantial portions of the Software.
 
 ## 📞 Support & Contact
 
-- 📧 **Email**: [Your Email]
+- 📧 **Email**: [pixel.quadro07@gmail.com]
 - 🐛 **Issues**: [Report a bug](https://github.com/PIXELQUADRO07/Gungnir/issues)
 - 💬 **Discussions**: [Join community discussions](https://github.com/PIXELQUADRO07/Gungnir/discussions)
 - 📚 **Docs**: [Full documentation](https://github.com/PIXELQUADRO07/Gungnir/wiki)
